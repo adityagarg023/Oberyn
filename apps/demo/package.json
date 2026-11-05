@@ -1,0 +1,21 @@
+{
+  "name": "@oberyn/demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@oberyn/contracts": "*"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "typescript-eslint": "^8",
+    "vite": "^7"
+  }
+}

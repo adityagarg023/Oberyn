@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Oberyn
 
-## Getting Started
+Oberyn is a multi-tenant error monitoring platform in the spirit of Sentry. Applications send errors through a TypeScript SDK, the ingest API accepts them quickly, workers process them asynchronously, and the dashboard, alerts, and AI features read the results.
 
-First, run the development server:
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Repository layout
+
+```
+apps/
+  api/          FastAPI ingest API (Python 3.11, uvicorn)
+  workers/      asyncio background workers (Python 3.11)
+  dashboard/    Next.js App Router dashboard
+  demo/         Vite demo app that exercises the SDK
+packages/
+  sdk/          TypeScript SDK (tsup, Vitest, zero runtime dependencies)
+  contracts/    Shared protocol constants and types
+infra/
+  docker-compose.yml  Local PostgreSQL and Redis
+tests/          Cross-service integration and load tests (added with those features)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Prerequisites
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node.js 20 or newer and npm
+- Python 3.11 with the `venv` module
+- Docker with Compose v2
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## First-time setup
 
-## Learn More
+```bash
+cp .env.example .env          # then replace the placeholder passwords
+npm install                   # installs every JavaScript workspace
 
-To learn more about Next.js, take a look at the following resources:
+docker compose --env-file .env -f infra/docker-compose.yml up -d
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+cd apps/api && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..
+cd apps/workers && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Running services
 
-## Deploy on Vercel
+| Service   | Command                                                              | URL                          |
+| --------- | -------------------------------------------------------------------- | ---------------------------- |
+| Dashboard | `npm run dev`                                                        | http://localhost:3000        |
+| Demo app  | `npm run dev:demo`                                                   | http://localhost:5173        |
+| API       | `cd apps/api && .venv/bin/uvicorn app.main:app --reload --port 8000` | http://localhost:8000/health |
+| Workers   | `cd apps/workers && .venv/bin/oberyn-workers`                        | (stop with Ctrl+C)           |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Quality checks
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint          # ESLint in every JavaScript workspace
+npm run typecheck     # TypeScript in every JavaScript workspace
+npm run test          # Vitest (SDK)
+npm run build         # Production builds (SDK, demo, dashboard)
+npm run format:check  # Prettier
+
+cd apps/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy app tests && .venv/bin/pytest
+cd apps/workers && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy workers tests && .venv/bin/pytest
+```
+
+## Configuration
+
+All configuration comes from environment variables. `.env.example` lists every variable and its purpose. Never commit `.env` or put secrets in source files.

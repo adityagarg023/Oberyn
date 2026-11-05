@@ -2,26 +2,29 @@
   "name": "oberyn",
   "version": "0.1.0",
   "private": true,
+  "description": "Oberyn: multi-tenant error monitoring platform",
+  "license": "MIT",
+  "workspaces": [
+    "apps/dashboard",
+    "apps/demo",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.4.5",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "dev": "npm run dev -w @oberyn/dashboard",
+    "dev:demo": "npm run dev -w @oberyn/demo",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.5",
-    "tailwindcss": "^4",
+    "prettier": "^3.6.2",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

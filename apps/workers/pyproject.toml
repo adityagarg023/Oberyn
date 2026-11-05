@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oberyn-workers"
+version = "0.1.0"
+description = "Oberyn background workers"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.9,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.11,<2",
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<2",
+  "ruff>=0.6,<1",
+]
+
+[project.scripts]
+oberyn-workers = "workers.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["workers*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

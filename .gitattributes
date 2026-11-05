@@ -1,0 +1,5 @@
+# Normalize line endings in the repository
+* text=auto eol=lf
+
+# Generated or vendored files that should not show up in diffs
+package-lock.json -diff

@@ -1,0 +1,14 @@
+node_modules
+.next
+dist
+coverage
+build
+out
+package-lock.json
+*.tsbuildinfo
+next-env.d.ts
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
