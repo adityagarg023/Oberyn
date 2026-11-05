@@ -1,7 +1,8 @@
-"""""""""
+"""${message}"""
+
 from alembic import op
 import sqlalchemy as sa
-${imports if imports else ""}
+${imports if imports else ''}
 
 
 revision = "${up_revision}"
@@ -11,8 +12,8 @@ depends_on = "${depends_on}"
 
 
 def upgrade() -> None:
-    ${upgrades if upgrades else "pass"}
+    ${upgrades if upgrades else 'pass'}
 
 
 def downgrade() -> None:
-    ${downgrades if downgrades else "pass"}
+    ${downgrades if downgrades else 'pass'}
