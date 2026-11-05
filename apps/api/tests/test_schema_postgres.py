@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import asyncpg
 import pytest
 
-DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
     reason="Set TEST_DATABASE_URL to run PostgreSQL integration tests",
