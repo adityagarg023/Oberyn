@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint,
+    BigInteger, Boolean, CheckConstraint, DateTime, ForeignKeyConstraint,
     Index, Integer, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -18,7 +18,14 @@ class Base(DeclarativeBase):
 
 class Organization(Base):
     __tablename__ = "organizations"
-    __table_args__ = (UniqueConstraint("slug", name="uq_organizations_slug"),)
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_organizations_slug"),
+        ForeignKeyConstraint(
+            ["owner_member_id", "id"], ["members.id", "members.organization_id"],
+            name="fk_organizations_owner_same_org", deferrable=True, initially="DEFERRED",
+            use_alter=True,
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -52,14 +59,10 @@ class Project(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "slug", name="uq_projects_org_slug"),
         UniqueConstraint("id", "organization_id", name="uq_projects_id_org"),
+        ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="CASCADE", name="fk_projects_organization"),
         ForeignKeyConstraint(
-            ["organization_id"], ["organizations.id"], ondelete="CASCADE",
-            name="fk_projects_organization",
-        ),
-        ForeignKeyConstraint(
-            ["created_by_member_id", "organization_id"],
-            ["members.id", "members.organization_id"], ondelete="RESTRICT",
-            name="fk_projects_creator_same_org",
+            ["created_by_member_id", "organization_id"], ["members.id", "members.organization_id"],
+            ondelete="RESTRICT", name="fk_projects_creator_same_org",
         ),
     )
 
@@ -75,11 +78,9 @@ class Project(Base):
 class ProjectKey(Base):
     __tablename__ = "project_keys"
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_project_keys_project_tenant",
-        ),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_project_keys_project_tenant"),
         UniqueConstraint("key_hash", name="uq_project_keys_hash"),
+        Index("ix_project_keys_project", "project_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -95,10 +96,8 @@ class Release(Base):
     __tablename__ = "releases"
     __table_args__ = (
         UniqueConstraint("project_id", "version", name="uq_releases_project_version"),
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_releases_project_tenant",
-        ),
+        UniqueConstraint("id", "project_id", name="uq_releases_id_project"),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_releases_project_tenant"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -111,15 +110,10 @@ class Release(Base):
 class SourceMap(Base):
     __tablename__ = "source_maps"
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_source_maps_project_tenant",
-        ),
-        ForeignKeyConstraint(
-            ["release_id", "project_id"], ["releases.id", "releases.project_id"],
-            ondelete="CASCADE", name="fk_source_maps_release_project",
-        ),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_source_maps_project_tenant"),
+        ForeignKeyConstraint(["release_id", "project_id"], ["releases.id", "releases.project_id"], ondelete="CASCADE", name="fk_source_maps_release_project"),
         UniqueConstraint("project_id", "release_id", "file_path", name="uq_source_maps_file"),
+        Index("ix_source_maps_project_release", "project_id", "release_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -136,15 +130,11 @@ class Issue(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "fingerprint", name="uq_issues_project_fingerprint"),
         UniqueConstraint("id", "project_id", name="uq_issues_id_project"),
-        CheckConstraint(
-            "status IN ('unresolved', 'resolved', 'ignored', 'regressed')",
-            name="ck_issues_status",
-        ),
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_issues_project_tenant",
-        ),
+        CheckConstraint("status IN ('unresolved', 'resolved', 'ignored', 'regressed')", name="ck_issues_status"),
+        CheckConstraint("event_count >= 0", name="ck_issues_event_count_nonnegative"),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_issues_project_tenant"),
         Index("ix_issues_project_status_last_seen", "project_id", "status", text("last_seen DESC")),
+        Index("ix_issues_organization", "organization_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -162,17 +152,12 @@ class Issue(Base):
 class Event(Base):
     __tablename__ = "events"
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["issue_id", "project_id"], ["issues.id", "issues.project_id"],
-            ondelete="CASCADE", name="fk_events_issue_project",
-        ),
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_events_project_tenant",
-        ),
+        ForeignKeyConstraint(["issue_id", "project_id"], ["issues.id", "issues.project_id"], ondelete="CASCADE", name="fk_events_issue_project"),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_events_project_tenant"),
         CheckConstraint("jsonb_typeof(payload) = 'object'", name="ck_events_payload_object"),
         Index("ix_events_issue_received_at", "issue_id", text("received_at DESC")),
         Index("ix_events_project_received_at", "project_id", text("received_at DESC")),
+        Index("ix_events_organization_received_at", "organization_id", text("received_at DESC")),
         {"postgresql_partition_by": "RANGE (received_at)"},
     )
 
@@ -190,11 +175,10 @@ class Event(Base):
 class AlertRule(Base):
     __tablename__ = "alert_rules"
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["project_id", "organization_id"], ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE", name="fk_alert_rules_project_tenant",
-        ),
+        ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_alert_rules_project_tenant"),
         CheckConstraint("threshold > 0", name="ck_alert_rules_threshold_positive"),
+        CheckConstraint("window_seconds > 0", name="ck_alert_rules_window_positive"),
+        UniqueConstraint("id", "project_id", name="uq_alert_rules_id_project"),
         Index("ix_alert_rules_project_enabled", "project_id", "enabled"),
     )
 
@@ -212,10 +196,7 @@ class AlertRule(Base):
 class AlertHistory(Base):
     __tablename__ = "alert_history"
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["alert_rule_id", "project_id"], ["alert_rules.id", "alert_rules.project_id"],
-            ondelete="CASCADE", name="fk_alert_history_rule_project",
-        ),
+        ForeignKeyConstraint(["alert_rule_id", "project_id"], ["alert_rules.id", "alert_rules.project_id"], ondelete="CASCADE", name="fk_alert_history_rule_project"),
         Index("ix_alert_history_project_created", "project_id", text("created_at DESC")),
     )
 
