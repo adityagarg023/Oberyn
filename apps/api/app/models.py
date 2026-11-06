@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, DateTime, ForeignKeyConstraint,
-    Index, Integer, String, Text, UniqueConstraint, func, text,
+    Index, Integer, PrimaryKeyConstraint, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -170,6 +170,34 @@ class Event(Base):
     environment: Mapped[str] = mapped_column(String(64), nullable=False, server_default="production")
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RawEvent(Base):
+    __tablename__ = "raw_events"
+    __table_args__ = (
+        PrimaryKeyConstraint("project_id", "event_id", name="pk_raw_events"),
+        ForeignKeyConstraint(
+            ["project_id", "organization_id"],
+            ["projects.id", "projects.organization_id"],
+            ondelete="CASCADE",
+            name="fk_raw_events_project_tenant",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(payload) = 'object'",
+            name="ck_raw_events_payload_object",
+        ),
+        Index("ix_raw_events_received_at", "received_at"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
 class AlertRule(Base):

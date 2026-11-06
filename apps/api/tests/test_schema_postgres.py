@@ -134,3 +134,44 @@ async def test_invalid_issue_status_is_rejected(conn: asyncpg.Connection) -> Non
             "VALUES($1,$2,$3,'bad','bad','closed',$4,$4)",
             uuid.uuid4(), project, org, now,
         )
+
+
+async def test_raw_event_idempotency_is_scoped_to_project(
+    conn: asyncpg.Connection,
+) -> None:
+    org, member, project = [uuid.uuid4() for _ in range(3)]
+    await conn.execute(
+        "INSERT INTO organizations(id,name,slug) VALUES($1,'raw-events',$2)",
+        org,
+        f"raw-events-{org}",
+    )
+    await conn.execute(
+        "INSERT INTO members(id,organization_id,email,role) VALUES($1,$2,$3,'owner')",
+        member,
+        org,
+        f"{member}@example.test",
+    )
+    await conn.execute(
+        "INSERT INTO projects(id,organization_id,created_by_member_id,name,slug) "
+        "VALUES($1,$2,$3,'raw-events','raw-events')",
+        project,
+        org,
+        member,
+    )
+
+    event_id = uuid.uuid4()
+    query = (
+        "INSERT INTO raw_events(project_id,organization_id,event_id,payload) "
+        "VALUES($1,$2,$3,$4::jsonb) "
+        "ON CONFLICT (project_id,event_id) DO NOTHING RETURNING event_id"
+    )
+    first = await conn.fetchval(query, project, org, event_id, '{"level":"error"}')
+    duplicate = await conn.fetchval(query, project, org, event_id, '{"level":"error"}')
+
+    assert first == event_id
+    assert duplicate is None
+    assert await conn.fetchval(
+        "SELECT count(*) FROM raw_events WHERE project_id=$1 AND event_id=$2",
+        project,
+        event_id,
+    ) == 1

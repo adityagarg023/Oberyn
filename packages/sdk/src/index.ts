@@ -50,7 +50,7 @@ function parseDsn(value: string): ParsedDsn | null {
     if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !projectId || !publicKey) return null;
     if (url.password || url.search || url.hash) return null;
     return {
-      endpoint: `${url.origin}/api/v1/events`,
+      endpoint: `${url.origin}/api/${projectId}/envelope`,
       projectId,
       publicKey,
     };
