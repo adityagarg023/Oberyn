@@ -7,10 +7,11 @@ rather than causing event processing to fail.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
-from collections.abc import Iterable, Mapping
 
 _LOCATION_RE = re.compile(r"^(?P<file>.*?)(?::(?P<line>\d+))(?::(?P<column>\d+))?$")
 _V8_RE = re.compile(r"^\s*at\s+(?:(?P<function>.*?)\s+\()?((?P<location>.+?))\)?\s*$")
@@ -169,4 +170,7 @@ def fingerprint_components(frames: Iterable[StackFrame]) -> tuple[str, ...]:
 def fingerprint(frames: Iterable[StackFrame]) -> str:
     """Build a deterministic, readable grouping key from normalized frames."""
     components = fingerprint_components(frames)
-    return "|".join(components) if components else "unknown"
+    if not components:
+        return "unknown"
+    canonical = "\\n".join(components).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
