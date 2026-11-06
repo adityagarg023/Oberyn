@@ -17,6 +17,8 @@ export interface OberynOptions {
 
 export interface CaptureOptions {
   level?: EventLevel;
+  /** Override automatic issue grouping for this event. */
+  fingerprint?: string;
 }
 
 interface ParsedDsn {
@@ -108,6 +110,7 @@ function createEvent(
   level: EventLevel,
   kind: "exception" | "message",
   options: OberynOptions,
+  fingerprint?: string,
 ): EventV1 {
   const error = kind === "exception" && value instanceof Error ? value : null;
   const exception = {
@@ -124,6 +127,7 @@ function createEvent(
     ...(options.release ? { release: options.release } : {}),
     ...(options.environment ? { environment: options.environment } : {}),
     exception,
+    ...(fingerprint ? { fingerprint } : {}),
     breadcrumbs: getBreadcrumbs(),
   };
 }
@@ -150,11 +154,21 @@ export function init(options: OberynOptions): void {
   });
 }
 
-function send(value: unknown, level: EventLevel, kind: "exception" | "message"): string | null {
+function send(
+  value: unknown,
+  level: EventLevel,
+  kind: "exception" | "message",
+  captureOptions: CaptureOptions = {},
+): string | null {
   return safe(null, () => {
     const current = client;
     if (!current) return null;
-    const event = createEvent(value, level, kind, current.options);
+    const customFingerprint = captureOptions.fingerprint?.trim();
+    if (
+      captureOptions.fingerprint !== undefined &&
+      (!customFingerprint || customFingerprint.length > 128)
+    ) return null;
+    const event = createEvent(value, level, kind, current.options, customFingerprint);
     if (Math.random() >= (current.options.sampleRate ?? 1)) return null;
 
     let outgoing: EventV1 | null = event;
@@ -186,11 +200,11 @@ function send(value: unknown, level: EventLevel, kind: "exception" | "message"):
 }
 
 export function captureException(error: unknown, options: CaptureOptions = {}): string | null {
-  return safe(null, () => send(error, LEVELS.includes(options.level ?? "error") ? options.level ?? "error" : "error", "exception"));
+  return safe(null, () => send(error, LEVELS.includes(options.level ?? "error") ? options.level ?? "error" : "error", "exception", options));
 }
 
 export function captureMessage(message: string, options: CaptureOptions = {}): string | null {
-  return safe(null, () => send(message, LEVELS.includes(options.level ?? "info") ? options.level ?? "info" : "info", "message"));
+  return safe(null, () => send(message, LEVELS.includes(options.level ?? "info") ? options.level ?? "info" : "info", "message", options));
 }
 export { addBreadcrumb, clearBreadcrumbs, configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
 export type { BreadcrumbInput, BreadcrumbOptions } from "./breadcrumbs.js";
