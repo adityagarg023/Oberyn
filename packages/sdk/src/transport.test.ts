@@ -146,7 +146,7 @@ describe("SDK transport", () => {
   });
 
   it("does not throw when the transport is unavailable", async () => {
-    const transport = new Transport({ endpoint: "/ingest", fetch: undefined });
+    const transport = new Transport({ endpoint: "/ingest", fetch: null });
     expect(() => transport.capture(event(11))).not.toThrow();
     await expect(transport.flush()).resolves.toBeUndefined();
     await transport.close();
