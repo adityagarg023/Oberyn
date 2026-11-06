@@ -41,7 +41,8 @@ new_user AS (
 )
 SELECT
     (SELECT event_id FROM inserted) AS inserted_event_id,
-    (SELECT id FROM issue) AS issue_id
+    (SELECT id FROM issue) AS issue_id,
+    (SELECT count(*) FROM new_user) AS new_user_inserted
 """
 
 
