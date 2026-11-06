@@ -65,11 +65,11 @@ def test_message_fallback_normalizes_numbers_uuids_and_urls() -> None:
     first = event_payload()
     second = event_payload()
     first["exception"]["value"] = (
-        "Request 42 failed for 123e4567-e89b-12d3-a456-426614174000 "
+        "Request 42 failed for 00000000-0000-0000-0000-000000000000 "
         "at https://host.test/a/42"
     )
     second["exception"]["value"] = (
-        "Request 99 failed for 123e4567-e89b-12d3-a456-426614174001 "
+        "Request 99 failed for 00000000-0000-0000-0000-000000000001 "
         "at https://host.test/a/99"
     )
     first["exception"]["stacktrace"] = []
