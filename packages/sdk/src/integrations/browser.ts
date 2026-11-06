@@ -100,8 +100,7 @@ export function instrumentBrowser(options: BrowserInstrumentationOptions = {}): 
     const original = proto?.open as ((...args: unknown[]) => unknown) | undefined;
     if (proto && original) {
       const wrapped = function(this: Record<string, unknown>, method: unknown, url: unknown, ...rest: unknown[]) {
-        this.__oberynMethod = String(method);
-        this.__oberynUrl = String(url);
+        try { this.__oberynMethod = String(method); this.__oberynUrl = String(url); } catch { /* Ignore metadata failures. */ }
         return original.call(this, method, url, ...rest);
       };
       safely(() => { proto.open = wrapped; });
@@ -109,8 +108,10 @@ export function instrumentBrowser(options: BrowserInstrumentationOptions = {}): 
       const send = proto.send as ((...args: unknown[]) => unknown) | undefined;
       if (send) {
         const wrappedSend = function(this: Record<string, unknown>, ...args: unknown[]) {
-          const url = String(this.__oberynUrl ?? "");
-          if (!ignored(url, options)) safely(() => addBreadcrumb({ type: "http", category: "xhr", data: { method: String(this.__oberynMethod ?? "GET"), url } }));
+          let url = "";
+          let method = "GET";
+          try { url = String(this.__oberynUrl ?? ""); method = String(this.__oberynMethod ?? "GET"); } catch { /* Metadata is optional. */ }
+          if (!ignored(url, options)) safely(() => addBreadcrumb({ type: "http", category: "xhr", data: { method, url } }));
           return send.apply(this, args);
         };
         safely(() => { proto.send = wrappedSend; });
