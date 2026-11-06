@@ -1,9 +1,10 @@
-from collections.abc import Iterator
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -55,6 +56,7 @@ class FakePool:
         else:
             issue = self.issues[issue_key]
             issue["event_count"] += 1
+            issue["first_seen"] = min(issue["first_seen"], occurred_at)
             issue["last_seen"] = max(issue["last_seen"], occurred_at)
             if issue["status"] == "resolved":
                 issue["status"] = "regressed"
