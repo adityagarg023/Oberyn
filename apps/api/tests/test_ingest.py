@@ -51,9 +51,6 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakePool]:
     async def create_pool(**kwargs: Any) -> FakePool:
         return pool
 
-    async def close_pool() -> None:
-        pool.closed = True
-
     monkeypatch.setattr("app.main.asyncpg.create_pool", create_pool)
 
     from app.main import get_pg_pool
@@ -65,8 +62,8 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakePool]:
         )
     )
     app.dependency_overrides[get_pg_pool] = lambda: pool
-    client = TestClient(app)
-    return client, pool
+    with TestClient(app) as client:
+        yield client, pool
 
 
 def valid_event() -> dict[str, Any]:
@@ -183,13 +180,13 @@ def test_oversized_content_length_returns_413(api_client: tuple[TestClient, Fake
 def test_oversized_stream_without_content_length_returns_413(
     api_client: tuple[TestClient, FakePool],
 ) -> None:
-    client, _ = api_client
+    client, pool = api_client
     payload = b"x" * (200 * 1024 + 1)
 
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(),
-        content=payload,
+        content=iter([payload]),
     )
 
     assert response.status_code == 413
