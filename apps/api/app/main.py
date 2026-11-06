@@ -20,6 +20,7 @@ from app.contracts.events import validate_event_payload
 from app.db import engine
 from app.fingerprints import generate_fingerprint
 from app.issues import persist_event_and_upsert_issue
+from app.dashboard import router as dashboard_router
 
 
 def get_database_engine() -> AsyncEngine:
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    app.include_router(dashboard_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
