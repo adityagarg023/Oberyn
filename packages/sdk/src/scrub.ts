@@ -1,13 +1,13 @@
 import type { EventV1, JsonValue } from "../../contracts/src/events.js";
 
-const SENSITIVE_KEY = /(?:password|passwd|pwd|token|secret|authorization|cookie|api[-_]?key|access[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?(?:number|no|cvv|cvc|expiry)|\\bcvv\\b|\\bcvc\\b|\\bpan\\b)/i;
-const BEARER = /\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+\\/-]+=*/gi;
-const ASSIGNMENT = /\\b(password|passwd|token|access_token|refresh_token|api_key|authorization|client_secret)\\s*([=:])\\s*([^\\s&,;]+)/gi;
-const URL_PARAM = /([?&](?:password|token|access_token|refresh_token|api_key|authorization|secret)=)[^&#\\s]*/gi;
-const CARD_CANDIDATE = /\\b(?:\\d[ -]*?){13,19}\\b/g;
+const SENSITIVE_KEY = /(?:password|passwd|pwd|token|secret|authorization|cookie|api[-_]?key|access[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?(?:number|no|cvv|cvc|expiry)|\bcvv\b|\bcvc\b|\bpan\b)/i;
+const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi;
+const ASSIGNMENT = /\b(password|passwd|token|access_token|refresh_token|api_key|authorization|client_secret)\s*([=:])\s*([^\s&,;]+)/gi;
+const URL_PARAM = /([?&](?:password|token|access_token|refresh_token|api_key|authorization|secret)=)[^&#\s]*/gi;
+const CARD_CANDIDATE = /\b(?:\d[ -]*?){13,19}\b/g;
 
 function passesLuhn(value: string): boolean {
-  const digits = value.replace(/\\D/g, "");
+  const digits = value.replace(/\D/g, "");
   if (digits.length < 13 || digits.length > 19) return false;
   let sum = 0;
   let doubleDigit = false;
