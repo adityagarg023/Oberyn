@@ -45,10 +45,21 @@ class EventV1(StrictModel):
     release: str | None = None
     environment: str | None = None
     exception: ExceptionV1
+    fingerprint: str | None = Field(default=None, min_length=1, max_length=128)
     breadcrumbs: list[dict[str, Any]] = Field(default_factory=list)
     user: UserV1 | None = None
     tags: dict[str, str] = Field(default_factory=dict)
     request: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("fingerprint")
+    @classmethod
+    def normalize_custom_fingerprint(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("fingerprint must not be empty")
+        return normalized
 
     @field_validator("timestamp")
     @classmethod
