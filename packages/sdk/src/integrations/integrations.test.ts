@@ -48,6 +48,7 @@ describe("framework integrations", () => {
       state: Record<string, unknown> = {};
       constructor(props: Record<string, unknown>) { this.props = props; }
       setState(state: Partial<Record<string, unknown>>): void { this.state = { ...this.state, ...state }; }
+      render(): unknown { return null; }
     }
     const React = { Component, createElement: vi.fn() };
     expect(createErrorBoundary(React, "fallback")).toBeTypeOf("function");
