@@ -45,7 +45,9 @@ describe("framework integrations", () => {
   it("creates a React error boundary without requiring React as a dependency", () => {
     class Component {
       props: Record<string, unknown>;
+      state: Record<string, unknown> = {};
       constructor(props: Record<string, unknown>) { this.props = props; }
+      setState(state: Partial<Record<string, unknown>>): void { this.state = { ...this.state, ...state }; }
     }
     const React = { Component, createElement: vi.fn() };
     expect(createErrorBoundary(React, "fallback")).toBeTypeOf("function");
