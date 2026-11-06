@@ -13,18 +13,30 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("issues", sa.Column("user_count", sa.BigInteger(), nullable=False, server_default="0"))
-    op.create_check_constraint("ck_issues_user_count_nonnegative", "issues", "user_count >= 0")
+    op.add_column(
+        "issues",
+        sa.Column("user_count", sa.BigInteger(), nullable=False, server_default="0"),
+    )
+    op.create_check_constraint(
+        "ck_issues_user_count_nonnegative", "issues", "user_count >= 0"
+    )
     op.create_table(
         "issue_users",
         sa.Column("issue_id", sa.Uuid(), nullable=False),
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.String(length=255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("issue_id", "user_id", name="pk_issue_users"),
         sa.ForeignKeyConstraint(
-            ["issue_id", "project_id"], ["issues.id", "issues.project_id"],
-            ondelete="CASCADE", name="fk_issue_users_issue_project",
+            ["issue_id", "project_id"],
+            ["issues.id", "issues.project_id"],
+            ondelete="CASCADE",
+            name="fk_issue_users_issue_project",
         ),
     )
     op.create_index("ix_issue_users_project", "issue_users", ["project_id"])
