@@ -57,9 +57,9 @@ async def persist_event_and_upsert_issue(
     title: str,
     occurred_at: datetime,
     user_id: str | None,
-) -> dict[str, Any]:
+) -> asyncpg.Record:
     """Persist the idempotent raw event and update its issue in one SQL statement."""
-    return await pool.fetchrow(
+    result = await pool.fetchrow(
         UPSERT_EVENT_SQL,
         project_id,
         organization_id,
@@ -70,3 +70,6 @@ async def persist_event_and_upsert_issue(
         occurred_at,
         user_id,
     )
+    if result is None:
+        raise RuntimeError("atomic event upsert returned no result row")
+    return result
