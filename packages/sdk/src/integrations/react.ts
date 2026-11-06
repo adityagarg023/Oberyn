@@ -4,7 +4,7 @@ export interface ReactErrorInfo {
   componentStack?: string | null;
 }
 
-export interface ReactComponentLike<P = Record<string, never>, S = Record<string, never>> {
+export interface ReactComponentLike<P = Record<string, unknown>, S = Record<string, never>> {
   props: P;
   state: S;
   setState(state: Partial<S>): void;
