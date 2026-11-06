@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -8,6 +9,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from redis.asyncio import Redis, from_url
 from redis.exceptions import RedisError
@@ -72,6 +74,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[origin.strip() for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Oberyn-Key", "X-Oberyn-Project-Id", "X-Oberyn-SDK"],
+    )
     app.include_router(dashboard_router)
 
     @app.get("/health")
