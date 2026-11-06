@@ -89,7 +89,7 @@ export function addBreadcrumb(input: BreadcrumbInput): void {
       ...(input.data ? { data: sanitize(input.data) as { [key: string]: JsonValue } } : {}),
     };
     const filtered = options.beforeBreadcrumb ? options.beforeBreadcrumb(breadcrumb) : breadcrumb;
-    if (filtered) buffer.push(filtered);
+    if (filtered) buffer.push(sanitize(filtered) as BreadcrumbV1);
   } catch {
     // User filters and malformed breadcrumb data are isolated from the host app.
   }
