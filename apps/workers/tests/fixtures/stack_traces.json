@@ -1,0 +1,7 @@
+{
+  "chrome": "TypeError: Cannot read properties of undefined (reading 'id')\n    at renderDashboard (https://app.example.com/assets/app.js?v=42#chunk:120:18)\n    at HTMLButtonElement.<anonymous> (https://app.example.com/assets/app.js:88:7)\n    at dispatchEvent (https://cdn.example.com/vendor/react-dom.js:4:120)",
+  "firefox": "TypeError: x is undefined\nrenderDashboard@https://app.example.com/assets/app.js?build=42:120:18\nonClick@https://app.example.com/assets/app.js:88:7\n@https://cdn.example.com/vendor/framework.js:4:120",
+  "safari": "TypeError: undefined is not an object\nrenderDashboard@https://app.example.com/assets/app.js:120:18\n@https://app.example.com/assets/app.js:88:7\nArray.forEach@native code",
+  "node": "TypeError: Cannot read properties of undefined\n    at renderDashboard (/srv/app/dist/index.js:120:18)\n    at processRequest (/srv/app/dist/server.js:88:7)\n    at Module._compile (node:internal/modules/cjs/loader:1364:14)\n    at node:internal/process/task_queues:95:5",
+  "malformed": "Error: incomplete trace\n    at ???\nnot-a-frame\n    at /srv/app/index.js:12\n    at /srv/app/broken.js:abc:2"
+}
