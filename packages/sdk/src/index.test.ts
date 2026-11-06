@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";\nimport type { EventV1 } from "../../contracts/src/events.js";
 import { captureException, captureMessage, generateEventId, init } from "./index";
 
 const dsn = "https://public-key@ingest.oberyn.dev/42";
@@ -88,7 +88,7 @@ describe("Oberyn SDK", () => {
 
   it("runs beforeSend and honors event drops and modifications", () => {
     const transport = vi.fn().mockResolvedValue({});
-    const beforeSend = vi.fn((event) => ({ ...event, release: "hook-release" }));
+    const beforeSend = vi.fn((event: EventV1) => ({ ...event, release: "hook-release" }));
     init({ dsn, fetch: transport, beforeSend });
     captureMessage("edit");
     const event = JSON.parse((transport.mock.calls[0]![1] as RequestInit).body as string);
