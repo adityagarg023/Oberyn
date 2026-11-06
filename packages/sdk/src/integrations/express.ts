@@ -23,12 +23,18 @@ export function oberynExpressErrorHandler(
   next: ExpressNext,
 ): void {
   try {
-    const path = String(request.originalUrl ?? request.url ?? "").split("?")[0].slice(0, 300);
+    const path = (String(request.originalUrl ?? request.url ?? "").split("?")[0] ?? "").slice(0, 300);
     addBreadcrumb({ type: "http", category: "express", data: { method: String(request.method ?? "GET"), url: path } });
     const exception = error instanceof Error ? error : new Error(String(error));
     captureException(exception);
-  } catch { /* Monitoring must never replace the original application error. */ }
-  try { next(error); } catch { /* Do not throw from the integration. */ }
+  } catch {
+    /* Monitoring must never replace the original application error. */
+  }
+  try {
+    next(error);
+  } catch {
+    /* Do not throw from the integration. */
+  }
 }
 
 /** Optional request breadcrumb middleware; no Express dependency is required. */
@@ -39,8 +45,14 @@ export function oberynExpressRequestMiddleware(
 ): void {
   try {
     // Avoid collecting query strings, headers, cookies, or request bodies.
-    const path = String(request.originalUrl ?? request.url ?? "").split("?")[0].slice(0, 300);
+    const path = (String(request.originalUrl ?? request.url ?? "").split("?")[0] ?? "").slice(0, 300);
     addBreadcrumb({ type: "http", category: "express", data: { method: String(request.method ?? "GET"), url: path } });
-  } catch { /* no-op */ }
-  try { next(); } catch { /* no-op */ }
+  } catch {
+    /* no-op */
+  }
+  try {
+    next();
+  } catch {
+    /* no-op */
+  }
 }
