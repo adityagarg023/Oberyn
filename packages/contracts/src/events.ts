@@ -42,6 +42,8 @@ export interface EventV1 {
   release?: string | null;
   environment?: string | null;
   exception: ExceptionV1;
+  /** Optional stable grouping override supplied by the application. */
+  fingerprint?: string | null;
   breadcrumbs?: BreadcrumbV1[];
   user?: UserV1 | null;
   tags?: Record<string, string>;
