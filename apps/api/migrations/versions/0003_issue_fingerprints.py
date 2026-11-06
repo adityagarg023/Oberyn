@@ -14,6 +14,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("issues", sa.Column("user_count", sa.BigInteger(), nullable=False, server_default="0"))
+    op.create_check_constraint("ck_issues_user_count_nonnegative", "issues", "user_count >= 0")
     op.create_table(
         "issue_users",
         sa.Column("issue_id", sa.Uuid(), nullable=False),
@@ -49,4 +50,5 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS increment_issue_user_count()")
     op.drop_index("ix_issue_users_project", table_name="issue_users")
     op.drop_table("issue_users")
+    op.drop_constraint("ck_issues_user_count_nonnegative", "issues", type_="check")
     op.drop_column("issues", "user_count")
