@@ -105,11 +105,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ingest_event(
         project_id: UUID,
         request: Request,
-        project_key: str = Header(alias="X-Oberyn-Key"),
+        project_key: str | None = Header(default=None, alias="X-Oberyn-Key"),
         header_project_id: str | None = Header(default=None, alias="X-Oberyn-Project-Id"),
         pool: asyncpg.Pool = Depends(get_pg_pool),  # noqa: B008
     ) -> dict[str, Any]:
         if header_project_id is not None and header_project_id != str(project_id):
+            raise HTTPException(status_code=401, detail="Invalid project credentials")
+
+        if not project_key:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
 
         key_hash = hashlib.sha256(project_key.encode("utf-8")).hexdigest()
