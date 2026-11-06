@@ -190,9 +190,8 @@ async def issue_detail(org_id: UUID, project_id: UUID, issue_id: UUID,
         raise HTTPException(status_code=404, detail="Issue not found")
     event = await db.fetchrow(
         """SELECT event_id,received_at,payload FROM raw_events
-           WHERE project_id=$1 AND payload->'exception'->>'type'=split_part($2, ': ', 1)
-             AND payload->'exception'->>'value'=substring($2 from length(split_part($2, ': ', 1))+3)
-           ORDER BY received_at DESC LIMIT 1""", project_id, issue["title"])
+           WHERE project_id=$1 AND issue_id=$2
+           ORDER BY received_at DESC LIMIT 1""", project_id, issue_id)
     return {"issue": dict(issue), "latest_event": dict(event) if event else None}
 
 @router.get("/organizations/{org_id}/projects/{project_id}/events/counts")
