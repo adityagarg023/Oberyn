@@ -2,7 +2,7 @@
 import Link from "next/link";
 import {useAuth,UserButton} from "@clerk/nextjs";
 import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
-import {useEffect,useMemo,useState} from "react";
+import {useMemo,useState} from "react";
 import {Activity,ArrowUpRight,Box,Code2,Plus,RefreshCw,Search,ShieldCheck} from "lucide-react";
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from "recharts";
 import {api,type Organization,type Project,type Issue,type Page} from "@/lib/api";
@@ -11,15 +11,15 @@ const btn="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 ho
 function ErrorBox({error,retry}:{error:Error;retry:()=>void}){return <div className="flex items-center justify-between rounded-lg border border-rose-500/20 bg-rose-500/5 p-4 text-sm text-rose-200">{error.message}<button className={btn} onClick={retry}>Retry</button></div>}
 export default function Dashboard(){
  const {getToken,isLoaded}=useAuth(),qc=useQueryClient();
- const [orgId,setOrgId]=useState(""),[projectId,setProjectId]=useState(""),[status,setStatus]=useState("unresolved"),[search,setSearch]=useState(""),[cursor,setCursor]=useState<string|null>(null),[prev,setPrev]=useState<(string|null)[]>([]);
+ const [selectedOrgId,setOrgId]=useState(""),[selectedProjectId,setProjectId]=useState(""),[status,setStatus]=useState("unresolved"),[search,setSearch]=useState(""),[cursor,setCursor]=useState<string|null>(null),[prev,setPrev]=useState<(string|null)[]>([]);
  const [orgName,setOrgName]=useState(""),[projectName,setProjectName]=useState(""),[platform,setPlatform]=useState("javascript"),[modal,setModal]=useState<"org"|"project"|null>(null),[dsn,setDsn]=useState<string|null>(null);
  const token=async()=>{const t=await getToken();if(!t)throw new Error("Session expired. Sign in again.");return t};
  const orgs=useQuery({queryKey:["orgs"],enabled:isLoaded,queryFn:async()=>api<{data:Organization[]}>("/api/dashboard/organizations",await token())});
- const orgRows=orgs.data?.data??[];
- useEffect(()=>{if(!orgId&&orgRows.length)setOrgId(orgRows[0].id)},[orgRows,orgId]);
+ const orgRows=useMemo(()=>orgs.data?.data??[],[orgs.data]);
+ const orgId=selectedOrgId||orgRows[0]?.id||"";
  const projects=useQuery({queryKey:["projects",orgId],enabled:!!orgId,queryFn:async()=>api<{data:Project[]}>("/api/dashboard/organizations/"+orgId+"/projects",await token())});
- const projectRows=projects.data?.data??[];
- useEffect(()=>{if(projectRows.length&&!projectRows.some(p=>p.id===projectId))setProjectId(projectRows[0].id);if(!projectRows.length)setProjectId("")},[projectRows,projectId]);
+ const projectRows=useMemo(()=>projects.data?.data??[],[projects.data]);
+ const projectId=projectRows.some(p=>p.id===selectedProjectId)?selectedProjectId:(projectRows[0]?.id??"");
  const issues=useQuery({queryKey:["issues",orgId,projectId,status,cursor],enabled:!!orgId&&!!projectId,queryFn:async()=>api<Page<Issue>>("/api/dashboard/organizations/"+orgId+"/projects/"+projectId+"/issues?status="+status+"&limit=25"+(cursor?"&cursor="+encodeURIComponent(cursor):""),await token())});
  const chart=useQuery({queryKey:["counts",orgId,projectId],enabled:!!orgId&&!!projectId,queryFn:async()=>api<{data:{day:string;count:number}[]}>("/api/dashboard/organizations/"+orgId+"/projects/"+projectId+"/events/counts?days=14",await token())});
  const orgMutation=useMutation({mutationFn:async()=>api<Organization>("/api/dashboard/organizations",await token(),{method:"POST",body:JSON.stringify({name:orgName})}),onSuccess:async o=>{await qc.invalidateQueries({queryKey:["orgs"]});setOrgId(o.id);setModal(null);setOrgName("")}});
