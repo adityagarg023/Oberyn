@@ -3,10 +3,7 @@
 Revision ID: 0002_raw_events
 Revises: 0001_initial_schema
 """
-
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision = "0002_raw_events"
 down_revision = "0001_initial_schema"
@@ -15,38 +12,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "raw_events",
-        sa.Column("project_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("organization_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("event_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "received_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.PrimaryKeyConstraint("project_id", "event_id", name="pk_raw_events"),
-        sa.ForeignKeyConstraint(
-            ["project_id", "organization_id"],
-            ["projects.id", "projects.organization_id"],
-            ondelete="CASCADE",
-            name="fk_raw_events_project_tenant",
-        ),
-        sa.CheckConstraint(
-            "jsonb_typeof(payload) = 'object'",
-            name="ck_raw_events_payload_object",
-        ),
-    )
-    op.create_index(
-        "ix_raw_events_received_at",
-        "raw_events",
-        ["received_at"],
-        unique=False,
-    )
+    # This legacy revision overlaps 0002_raw_event_ingestion. IF NOT EXISTS
+    # lets both Alembic heads converge on the same durable table safely.
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS raw_events (
+            project_id uuid NOT NULL,
+            organization_id uuid NOT NULL,
+            event_id uuid NOT NULL,
+            received_at timestamptz NOT NULL DEFAULT now(),
+            payload jsonb NOT NULL,
+            CONSTRAINT pk_raw_events PRIMARY KEY (project_id, event_id),
+            CONSTRAINT ck_raw_events_payload_object CHECK (jsonb_typeof(payload) = 'object'),
+            CONSTRAINT fk_raw_events_project_tenant
+                FOREIGN KEY (project_id, organization_id)
+                REFERENCES projects(id, organization_id) ON DELETE CASCADE
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_raw_events_received_at ON raw_events (received_at)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_raw_events_received_at", table_name="raw_events")
-    op.drop_table("raw_events")
+    op.execute("DROP TABLE IF EXISTS raw_events")

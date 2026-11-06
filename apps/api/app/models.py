@@ -132,6 +132,7 @@ class Issue(Base):
         UniqueConstraint("id", "project_id", name="uq_issues_id_project"),
         CheckConstraint("status IN ('unresolved', 'resolved', 'ignored', 'regressed')", name="ck_issues_status"),
         CheckConstraint("event_count >= 0", name="ck_issues_event_count_nonnegative"),
+        CheckConstraint("user_count >= 0", name="ck_issues_user_count_nonnegative"),
         ForeignKeyConstraint(["project_id", "organization_id"], ["projects.id", "projects.organization_id"], ondelete="CASCADE", name="fk_issues_project_tenant"),
         Index("ix_issues_project_status_last_seen", "project_id", "status", text("last_seen DESC")),
         Index("ix_issues_organization", "organization_id"),
@@ -146,6 +147,24 @@ class Issue(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     event_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    user_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IssueUser(Base):
+    __tablename__ = "issue_users"
+    __table_args__ = (
+        PrimaryKeyConstraint("issue_id", "user_id", name="pk_issue_users"),
+        ForeignKeyConstraint(
+            ["issue_id", "project_id"], ["issues.id", "issues.project_id"],
+            ondelete="CASCADE", name="fk_issue_users_issue_project",
+        ),
+        Index("ix_issue_users_project", "project_id"),
+    )
+
+    issue_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
 from app.db import engine
+from app.fingerprints import generate_fingerprint
+from app.issues import persist_event_and_upsert_issue
 
 
 def get_database_engine() -> AsyncEngine:
@@ -160,22 +162,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         payload_json = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
         try:
-            inserted_id = await pool.fetchval(
-                """
-                INSERT INTO raw_events (
-                    project_id,
-                    organization_id,
-                    event_id,
-                    payload
-                )
-                VALUES ($1, $2, $3, $4::jsonb)
-                ON CONFLICT (project_id, event_id) DO NOTHING
-                RETURNING event_id
-                """,
-                project_id,
-                project["organization_id"],
-                event.event_id,
-                payload_json,
+            result = await persist_event_and_upsert_issue(
+                pool,
+                project_id=project_id,
+                organization_id=project["organization_id"],
+                event_id=event.event_id,
+                payload_json=payload_json,
+                fingerprint=generate_fingerprint(event),
+                title=f"{event.exception.type}: {event.exception.value}",
+                occurred_at=event.timestamp,
+                user_id=event.user.id if event.user is not None else None,
             )
         except asyncpg.PostgresError as exc:
             raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
@@ -183,7 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "accepted",
             "event_id": str(event.event_id),
-            "duplicate": inserted_id is None,
+            "duplicate": result["inserted_event_id"] is None,
         }
 
     return app

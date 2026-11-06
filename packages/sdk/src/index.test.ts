@@ -138,6 +138,23 @@ describe("Oberyn SDK", () => {
     expect(transport).toHaveBeenCalledOnce();
   });
 
+
+  it("includes a custom fingerprint when capturing an event", () => {
+    const transport = vi.fn().mockResolvedValue({});
+    init({ dsn, fetch: transport });
+    captureException(new Error("payment failed"), { fingerprint: "checkout/payment" });
+    const event = JSON.parse((transport.mock.calls[0]![1] as RequestInit).body as string);
+    expect(event.fingerprint).toBe("checkout/payment");
+  });
+
+  it("does not send invalid custom fingerprints", () => {
+    const transport = vi.fn().mockResolvedValue({});
+    init({ dsn, fetch: transport });
+    expect(captureMessage("bad", { fingerprint: " " })).toBeNull();
+    expect(captureMessage("bad", { fingerprint: "x".repeat(129) })).toBeNull();
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   it("truncates oversized message strings", () => {
     const transport = vi.fn().mockResolvedValue({});
     init({ dsn, fetch: transport });
