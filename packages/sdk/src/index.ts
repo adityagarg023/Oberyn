@@ -41,7 +41,7 @@ function safe<T>(fallback: T, operation: () => T): T {
 function parseDsn(value: string): ParsedDsn | null {
   return safe(null, () => {
     const url = new URL(value);
-    const projectId = url.pathname.split("/").filter(Boolean).at(-1);
+    const segments = url.pathname.split("/").filter(Boolean);\n    const projectId = segments[segments.length - 1];
     const publicKey = url.username;
     if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !projectId || !publicKey) return null;
     if (url.password || url.search || url.hash) return null;
