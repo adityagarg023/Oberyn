@@ -31,6 +31,15 @@ issue AS (
         END
     RETURNING id, project_id
 ),
+linked_event AS (
+    UPDATE raw_events AS raw
+    SET issue_id = issue.id
+    FROM issue
+    WHERE raw.project_id = $1
+      AND raw.event_id = $3
+      AND raw.issue_id IS NULL
+    RETURNING raw.event_id
+),
 new_user AS (
     INSERT INTO issue_users (issue_id, project_id, user_id)
     SELECT issue.id, issue.project_id, $8
