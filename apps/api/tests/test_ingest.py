@@ -1,10 +1,9 @@
+from collections.abc import Iterator
 import hashlib
 import json
 from pathlib import Path
 from typing import Any
 from uuid import UUID
-
-from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
@@ -103,7 +102,7 @@ def test_invalid_event_payload_returns_422(api_client: tuple[TestClient, FakePoo
 
     response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
 
-    assert response.status_code == 401
+    assert response.status_code == 422
 
 
 def test_invalid_json_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
