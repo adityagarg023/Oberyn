@@ -31,7 +31,7 @@ export interface TransportOptions {
   maxRetries?: number;
   baseRetryDelayMs?: number;
   maxRetryDelayMs?: number;
-  fetch?: FetchLike;
+  fetch?: FetchLike | null;
   sendBeacon?: BeaconLike;
   eventTarget?: EventTargetLike;
 }
@@ -84,7 +84,7 @@ export class Transport {
       addEventListener?: EventTargetLike["addEventListener"];
       removeEventListener?: EventTargetLike["removeEventListener"];
     };
-    this.fetcher = options.fetch ?? runtime.fetch;
+    this.fetcher = options.fetch === null ? undefined : options.fetch ?? runtime.fetch;
     this.beacon = options.sendBeacon ?? runtime.navigator?.sendBeacon?.bind(runtime.navigator);
     this.eventTarget = options.eventTarget ?? (
       runtime.addEventListener ? {
