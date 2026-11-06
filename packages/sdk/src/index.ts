@@ -194,14 +194,6 @@ export function captureMessage(message: string, options: CaptureOptions = {}): s
 }
 export { addBreadcrumb, clearBreadcrumbs, configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
 export type { BreadcrumbInput, BreadcrumbOptions } from "./breadcrumbs.js";
-export { instrumentBrowser } from "./integrations/browser.js";
-export type { BrowserInstrumentationOptions } from "./integrations/browser.js";
-export { createErrorBoundary } from "./integrations/react.js";
-export type { ReactRuntime, ReactErrorInfo } from "./integrations/react.js";
-export { instrumentNextRouter, recordNextRoute } from "./integrations/next.js";
-export type { NextRouterLike } from "./integrations/next.js";
-export { oberynExpressErrorHandler, oberynExpressRequestMiddleware } from "./integrations/express.js";
-export type { ExpressRequestLike, ExpressResponseLike, ExpressNext } from "./integrations/express.js";
 export { Transport } from "./transport.js";
 export type { TransportOptions } from "./transport.js";
 export { scrubEvent, scrubString } from "./scrub.js";
