@@ -33,7 +33,7 @@ describe("Oberyn SDK", () => {
     expect(id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(transport).toHaveBeenCalledOnce();
     const [url, request] = transport.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://ingest.oberyn.dev/api/v1/events");
+    expect(url).toBe("https://ingest.oberyn.dev/api/42/envelope");
     expect(request.method).toBe("POST");
     expect((request.headers as Record<string, string>)["x-oberyn-project-id"]).toBe("42");
     expect((request.headers as Record<string, string>)["x-oberyn-key"]).toBe("public-key");
