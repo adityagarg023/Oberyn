@@ -122,7 +122,8 @@ describe("Oberyn SDK", () => {
   });
 
   it("does not install global error handlers or recapture its own transport failures", () => {
-    const add = vi.spyOn(globalThis, "addEventListener");
+    const add = vi.fn();
+    vi.stubGlobal("addEventListener", add);
     const transport = vi.fn().mockRejectedValue(new Error("network"));
     init({ dsn, fetch: transport });
     captureMessage("first");
