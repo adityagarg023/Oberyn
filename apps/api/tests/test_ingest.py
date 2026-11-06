@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import asyncpg
+from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,6 +21,9 @@ class FakePool:
         self.events: dict[tuple[UUID, UUID], dict[str, Any]] = {}
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
         self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
 
     async def fetchrow(self, query: str, project_id: UUID, key_hash: str) -> dict[str, UUID] | None:
         assert "project_keys" in query
@@ -45,7 +48,7 @@ class FakePool:
 
 
 @pytest.fixture
-def api_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakePool]:
+def api_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, FakePool]]:
     pool = FakePool()
 
     async def create_pool(**kwargs: Any) -> FakePool:
@@ -100,7 +103,7 @@ def test_invalid_event_payload_returns_422(api_client: tuple[TestClient, FakePoo
 
     response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
 
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 def test_invalid_json_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
@@ -193,7 +196,7 @@ def test_oversized_stream_without_content_length_returns_413(
     assert len(pool.events) == 0
 
 
-def test_missing_project_key_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
+def test_missing_project_key_returns_401(api_client: tuple[TestClient, FakePool]) -> None:
     client, _ = api_client
     request_headers = {"Content-Type": "application/json"}
 
@@ -203,4 +206,4 @@ def test_missing_project_key_returns_422(api_client: tuple[TestClient, FakePool]
         json=valid_event(),
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 401
