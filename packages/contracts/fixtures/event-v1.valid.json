@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "event_id": "018f4e5a-7b2c-7abc-8def-0123456789ab",
+  "timestamp": "2026-11-06T08:30:00.000Z",
+  "platform": "javascript",
+  "level": "error",
+  "release": "web@1.2.3",
+  "environment": "production",
+  "exception": {
+    "type": "TypeError",
+    "value": "Cannot read properties of undefined",
+    "stacktrace": [
+      {
+        "filename": "https://cdn.example.com/app.js",
+        "function": "renderDashboard",
+        "lineno": 42,
+        "colno": 17,
+        "in_app": true
+      }
+    ]
+  },
+  "breadcrumbs": [
+    {
+      "timestamp": "2026-11-06T08:29:59.500Z",
+      "category": "ui.click",
+      "message": "Clicked dashboard refresh",
+      "data": { "button": "refresh" }
+    }
+  ],
+  "user": { "id": "user_123" },
+  "tags": { "browser": "Chrome", "region": "ap-south-1" },
+  "request": {
+    "url": "https://app.example.com/dashboard",
+    "method": "GET",
+    "headers": { "x-request-id": "req_123" }
+  }
+}
