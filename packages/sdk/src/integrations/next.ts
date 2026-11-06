@@ -7,34 +7,60 @@ export interface NextRouterLike {
   forward?: (...args: unknown[]) => unknown;
 }
 
+type RouterMethod = "push" | "replace" | "back" | "forward";
+
 /** Wraps a Next.js router instance (App Router or Pages Router) without importing Next.js. */
 export function instrumentNextRouter<T extends NextRouterLike>(router: T): () => void {
   const restores: Array<() => void> = [];
+  const mutableRouter = router as unknown as Record<RouterMethod, unknown>;
+
   try {
     for (const method of ["push", "replace", "back", "forward"] as const) {
-      const original = router[method];
+      const original = mutableRouter[method];
       if (typeof original !== "function") continue;
-      const wrapped = function(this: T, ...args: unknown[]) {
+
+      const originalMethod = original as (...args: unknown[]) => unknown;
+      const wrapped = function (this: T, ...args: unknown[]) {
         try {
-          addBreadcrumb({ type: "navigation", category: "navigation", data: { framework: "nextjs", method, to: String(args[0] ?? "") } });
-        } catch { /* Best effort only. */ }
-        return original.apply(this, args as never[]);
+          addBreadcrumb({
+            type: "navigation",
+            category: "navigation",
+            data: { framework: "nextjs", method, to: String(args[0] ?? "") },
+          });
+        } catch {
+          /* Best effort only. */
+        }
+        return originalMethod.apply(this, args);
       };
-      router[method] = wrapped as T[typeof method];
-      restores.push(() => { if (router[method] === wrapped) router[method] = original as T[typeof method]; });
+
+      mutableRouter[method] = wrapped;
+      restores.push(() => {
+        if (mutableRouter[method] === wrapped) mutableRouter[method] = original;
+      });
     }
-  } catch { /* Partial instrumentation is still safe. */ }
+  } catch {
+    /* Partial instrumentation is still safe. */
+  }
+
   let active = true;
   return () => {
     if (!active) return;
     active = false;
     for (const restore of restores.reverse()) {
-      try { restore(); } catch { /* Ignore teardown failures. */ }
+      try {
+        restore();
+      } catch {
+        /* Ignore teardown failures. */
+      }
     }
   };
 }
 
 /** Call from a Next.js route-change observer when using the App Router. */
 export function recordNextRoute(pathname: string): void {
-  try { addBreadcrumb({ type: "navigation", category: "navigation", data: { framework: "nextjs", to: pathname } }); } catch { /* no-op */ }
+  try {
+    addBreadcrumb({ type: "navigation", category: "navigation", data: { framework: "nextjs", to: pathname } });
+  } catch {
+    /* no-op */
+  }
 }
