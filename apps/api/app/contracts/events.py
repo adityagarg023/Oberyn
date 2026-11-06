@@ -33,7 +33,7 @@ class ExceptionV1(StrictModel):
 
 
 class UserV1(StrictModel):
-    id: str
+    id: str = Field(min_length=1, max_length=255)
 
 
 class EventV1(StrictModel):
