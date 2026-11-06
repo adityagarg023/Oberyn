@@ -206,12 +206,18 @@ class RawEvent(Base):
             "jsonb_typeof(payload) = 'object'",
             name="ck_raw_events_payload_object",
         ),
+        ForeignKeyConstraint(
+            ["issue_id", "project_id"], ["issues.id", "issues.project_id"],
+            ondelete="CASCADE", name="fk_raw_events_issue_project",
+        ),
         Index("ix_raw_events_received_at", "received_at"),
+        Index("ix_raw_events_issue_received_at", "issue_id", text("received_at DESC")),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
