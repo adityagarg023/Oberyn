@@ -31,11 +31,23 @@ class FakePool:
         if "project_keys" in query:
             project_id, key_hash = args
             if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
-                return {"id": PROJECT_ID, "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")}
+                return {
+                    "id": PROJECT_ID,
+                    "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+                }
             return None
 
         assert "WITH inserted AS" in query
-        project_id, organization_id, event_id, payload_json, fingerprint, title, occurred_at, user_id = args
+        (
+            project_id,
+            organization_id,
+            event_id,
+            payload_json,
+            fingerprint,
+            title,
+            occurred_at,
+            user_id,
+        ) = args
         event_key = (project_id, event_id)
         if event_key in self.events:
             return {"inserted_event_id": None, "issue_id": None}
