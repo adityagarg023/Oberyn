@@ -48,7 +48,8 @@ captured events in oldest-to-newest order. Sensitive-looking keys and credential
 strings are redacted before storage.
 
 ```ts
-import { init, addBreadcrumb, instrumentBrowser } from "@oberyn/sdk";
+import { init, addBreadcrumb } from "@oberyn/sdk";
+import { instrumentBrowser } from "@oberyn/sdk/browser";
 
 init({
   dsn: "https://<public-key>@ingest.oberyn.dev/<project-id>",
