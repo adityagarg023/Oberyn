@@ -4,7 +4,7 @@ import asyncio, base64, hashlib, os, re, secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
-import asyncpg, jwt
+import asyncpg, httpx, jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field
@@ -78,8 +78,20 @@ async def list_organizations(user: dict[str, str] = Depends(current_user),
 @router.post("/organizations", status_code=201)
 async def create_organization(body: OrganizationInput, user: dict[str, str] = Depends(current_user),
                               db: asyncpg.Pool = Depends(get_pool)) -> dict[str, Any]:
-    if not user["email"]:
-        raise HTTPException(status_code=422, detail="Clerk session must include an email claim")
+    secret_key = os.getenv("CLERK_SECRET_KEY", "")
+    if not secret_key:
+        raise HTTPException(status_code=503, detail="CLERK_SECRET_KEY is not configured")
+    async with httpx.AsyncClient(timeout=5) as client:
+        profile = await client.get("https://api.clerk.com/v1/users/" + user["id"],
+                                   headers={"Authorization": "Bearer " + secret_key})
+    if profile.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not retrieve Clerk user profile")
+    profile_data = profile.json()
+    addresses = profile_data.get("email_addresses", [])
+    email = next((item["email_address"] for item in addresses
+                  if item["id"] == profile_data.get("primary_email_address_id")), None)
+    if not email:
+        raise HTTPException(status_code=422, detail="Add an email address to your Clerk account")
     org_id, member_id = uuid4(), uuid4()
     base, slug, suffix = slugify(body.name), slugify(body.name), 1
     async with db.acquire() as conn:
@@ -91,7 +103,7 @@ async def create_organization(body: OrganizationInput, user: dict[str, str] = De
                                org_id, body.name.strip(), slug)
             await conn.execute(
                 """INSERT INTO members(id,organization_id,clerk_user_id,email,role)
-                   VALUES($1,$2,$3,$4,'owner')""", member_id, org_id, user["id"], user["email"])
+                   VALUES($1,$2,$3,$4,'owner')""", member_id, org_id, user["id"], email)
             await conn.execute("UPDATE organizations SET owner_member_id=$1 WHERE id=$2", member_id, org_id)
     return {"id": str(org_id), "name": body.name.strip(), "slug": slug, "role": "owner"}
 
@@ -128,7 +140,7 @@ async def create_project(org_id: UUID, body: ProjectInput, user: dict[str, str] 
                 key_id, project_id, org_id, hashlib.sha256(secret.encode()).hexdigest())
     return {"project": {"id": str(project_id), "name": body.name.strip(), "slug": slug,
                         "platform": body.platform},
-            "dsn": f"https://{secret}@localhost:8000/api/{project_id}/envelope"}
+            "dsn": os.getenv("OBERYN_INGEST_URL", "http://localhost:8000").rstrip("/") + "/" + secret + "@" + str(project_id)}
 
 @router.get("/organizations/{org_id}/projects/{project_id}/issues")
 async def list_issues(org_id: UUID, project_id: UUID, status: str = Query("all"),
