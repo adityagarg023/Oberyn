@@ -2,10 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventV1 } from "../../contracts/src/events.js";
 import { Transport } from "./transport.js";
 
+type Init = { method: "POST"; headers: Record<string, string>; body: string; keepalive?: boolean };
+type Result = { ok: boolean; status: number; headers: { get: (name: string) => string | null } };
+type MockFetch = (url: string, init: Init) => Promise<Result>;
+
 function event(id: number, request: EventV1["request"] = {}): EventV1 {
   return {
     schema_version: 1,
-    event_id: \`00000000-0000-4000-8000-\${String(id).padStart(12, "0")}\`,
+    event_id: "00000000-0000-4000-8000-" + String(id).padStart(12, "0"),
     timestamp: "2026-11-06T00:00:00.000Z",
     platform: "javascript",
     level: "error",
@@ -14,7 +18,7 @@ function event(id: number, request: EventV1["request"] = {}): EventV1 {
   };
 }
 
-function response(status = 200, retryAfter: string | null = null) {
+function response(status = 200, retryAfter: string | null = null): Result {
   return { ok: status >= 200 && status < 300, status, headers: { get: () => retryAfter } };
 }
 
@@ -22,7 +26,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("SDK transport", () => {
   it("batches events into a single request", async () => {
-    const fetch = vi.fn(async () => response());
+    const fetch = vi.fn<MockFetch>(async () => response());
     const transport = new Transport({ endpoint: "/ingest", batchSize: 2, fetch });
     transport.capture(event(1));
     transport.capture(event(2));
@@ -36,7 +40,7 @@ describe("SDK transport", () => {
 
   it("retries network failures with exponential backoff", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn()
+    const fetch = vi.fn<MockFetch>()
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValue(response());
     const transport = new Transport({
@@ -55,7 +59,7 @@ describe("SDK transport", () => {
 
   it("honors Retry-After before retrying a rate-limited batch", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn()
+    const fetch = vi.fn<MockFetch>()
       .mockResolvedValueOnce(response(429, "2"))
       .mockResolvedValue(response());
     const transport = new Transport({
@@ -75,7 +79,7 @@ describe("SDK transport", () => {
 
   it("stops retrying after the configured retry budget", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn().mockRejectedValue(new Error("offline"));
+    const fetch = vi.fn<MockFetch>().mockRejectedValue(new Error("offline"));
     const transport = new Transport({
       endpoint: "/ingest", batchSize: 1, flushIntervalMs: 60_000,
       maxRetries: 2, baseRetryDelayMs: 10, fetch,
@@ -102,7 +106,7 @@ describe("SDK transport", () => {
       removeEventListener: vi.fn(),
     };
     const beacon = vi.fn(() => true);
-    const fetch = vi.fn(async () => response());
+    const fetch = vi.fn<MockFetch>(async () => response());
     const transport = new Transport({
       endpoint: "/ingest", batchSize: 10, fetch, sendBeacon: beacon, eventTarget: target,
     });
@@ -118,7 +122,7 @@ describe("SDK transport", () => {
     let pagehide: (() => void) | undefined;
     const target = { addEventListener: (_: string, listener: () => void) => { pagehide = listener; } };
     const beacon = vi.fn(() => false);
-    const fetch = vi.fn(async () => response());
+    const fetch = vi.fn<MockFetch>(async () => response());
     const transport = new Transport({
       endpoint: "/ingest", batchSize: 10, fetch, sendBeacon: beacon, eventTarget: target,
     });
@@ -131,7 +135,7 @@ describe("SDK transport", () => {
   it("caps the offline buffer by dropping the oldest event", async () => {
     const transport = new Transport({
       endpoint: "/ingest", maxBufferSize: 2, batchSize: 10,
-      fetch: vi.fn(async () => response()),
+      fetch: vi.fn<MockFetch>(async () => response()),
     });
     transport.capture(event(8));
     transport.capture(event(9));
