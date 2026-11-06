@@ -2,6 +2,7 @@
 
 Revision ID: 0001_initial_schema
 """
+
 from alembic import op
 
 revision = "0001_initial_schema"
@@ -10,8 +11,15 @@ branch_labels = None
 depends_on = None
 
 
+def execute_statements(sql: str) -> None:
+    for statement in sql.split(";"):
+        statement = statement.strip()
+        if statement:
+            op.execute(statement)
+
+
 def upgrade() -> None:
-    op.execute("""
+    execute_statements("""
     CREATE TABLE organizations (
         id uuid PRIMARY KEY,
         name varchar(160) NOT NULL,
@@ -154,7 +162,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("""
+    execute_statements("""
     DROP TABLE IF EXISTS events CASCADE;
     DROP TABLE IF EXISTS alert_history CASCADE;
     DROP TABLE IF EXISTS alert_rules CASCADE;
