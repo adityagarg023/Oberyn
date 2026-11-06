@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.contracts.events import EventV1
-from workers_fingerprint_compat import unused  # type: ignore[import-not-found]  # removed below
 
 _UUID_RE = re.compile(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b")
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>'\"\\)]+")
