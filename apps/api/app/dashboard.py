@@ -1,10 +1,17 @@
 """Clerk-authenticated, tenant-scoped dashboard endpoints."""
 from __future__ import annotations
-import asyncio, base64, hashlib, os, re, secrets
+import asyncio
+import base64
+import hashlib
+import os
+import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
-import asyncpg, httpx, jwt
+import asyncpg
+import httpx
+import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field
@@ -184,6 +191,7 @@ async def issue_detail(org_id: UUID, project_id: UUID, issue_id: UUID,
     event = await db.fetchrow(
         """SELECT event_id,received_at,payload FROM raw_events
            WHERE project_id=$1 AND payload->'exception'->>'type'=split_part($2, ': ', 1)
+             AND payload->'exception'->>'value'=substring($2 from length(split_part($2, ': ', 1))+3)
            ORDER BY received_at DESC LIMIT 1""", project_id, issue["title"])
     return {"issue": dict(issue), "latest_event": dict(event) if event else None}
 
