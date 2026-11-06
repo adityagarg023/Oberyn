@@ -13,6 +13,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./browser": {
+      "types": "./dist/integrations/browser.d.ts",
+      "import": "./dist/integrations/browser.js",
+      "require": "./dist/integrations/browser.cjs"
+    },
+    "./react": {
+      "types": "./dist/integrations/react.d.ts",
+      "import": "./dist/integrations/react.js",
+      "require": "./dist/integrations/react.cjs"
+    },
+    "./next": {
+      "types": "./dist/integrations/next.d.ts",
+      "import": "./dist/integrations/next.js",
+      "require": "./dist/integrations/next.cjs"
+    },
+    "./express": {
+      "types": "./dist/integrations/express.d.ts",
+      "import": "./dist/integrations/express.js",
+      "require": "./dist/integrations/express.cjs"
     }
   },
   "files": [
