@@ -12,7 +12,10 @@ import pytest
 from app.issues import persist_event_and_upsert_issue
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="Set TEST_DATABASE_URL for PostgreSQL concurrency tests")
+pytestmark = pytest.mark.skipif(
+    not DATABASE_URL,
+    reason="Set TEST_DATABASE_URL for PostgreSQL concurrency tests",
+)
 
 
 def database_url() -> str:
@@ -25,18 +28,28 @@ async def create_project(pool: asyncpg.Pool) -> tuple[uuid.UUID, uuid.UUID]:
     async with pool.acquire() as connection:
         await connection.execute(
             "INSERT INTO organizations(id,name,slug) VALUES($1,'issue-upsert-test',$2)",
-            organization_id, f"issue-upsert-{organization_id}",
+            organization_id,
+            f"issue-upsert-{organization_id}",
         )
         await connection.execute(
             "INSERT INTO members(id,organization_id,email,role) VALUES($1,$2,$3,'owner')",
-            member_id, organization_id, f"{member_id}@example.test",
+            member_id,
+            organization_id,
+            f"{member_id}@example.test",
         )
         await connection.execute(
-            "UPDATE organizations SET owner_member_id=$1 WHERE id=$2", member_id, organization_id
+            "UPDATE organizations SET owner_member_id=$1 WHERE id=$2",
+            member_id,
+            organization_id,
         )
         await connection.execute(
-            "INSERT INTO projects(id,organization_id,created_by_member_id,name,slug) VALUES($1,$2,$3,'test','test')",
-            project_id, organization_id, member_id,
+            """
+            INSERT INTO projects(id,organization_id,created_by_member_id,name,slug)
+            VALUES($1,$2,$3,'test','test')
+            """,
+            project_id,
+            organization_id,
+            member_id,
         )
     return organization_id, project_id
 
@@ -50,13 +63,14 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
 
         async def write(index: int) -> None:
             event_id = uuid.uuid4()
+            payload = {"event_id": str(event_id), "exception": {"type": "RuntimeError"}}
             async with pool.acquire() as connection:
                 result = await persist_event_and_upsert_issue(
                     connection,
                     project_id=project_id,
                     organization_id=organization_id,
                     event_id=event_id,
-                    payload_json=json.dumps({"event_id": str(event_id), "exception": {"type": "RuntimeError"}}),
+                    payload_json=json.dumps(payload),
                     fingerprint="same-fingerprint",
                     title="RuntimeError: failed",
                     occurred_at=base_time + timedelta(seconds=index),
@@ -69,15 +83,20 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
 
         async with pool.acquire() as connection:
             issues = await connection.fetch(
-                "SELECT id, first_seen, last_seen, event_count, user_count, status "
-                "FROM issues WHERE project_id=$1 AND fingerprint=$2",
-                project_id, "same-fingerprint",
+                """
+                SELECT id, first_seen, last_seen, event_count, user_count, status
+                FROM issues WHERE project_id=$1 AND fingerprint=$2
+                """,
+                project_id,
+                "same-fingerprint",
             )
             raw_event_count = await connection.fetchval(
-                "SELECT count(*) FROM raw_events WHERE project_id=$1", project_id
+                "SELECT count(*) FROM raw_events WHERE project_id=$1",
+                project_id,
             )
             issue_user_count = await connection.fetchval(
-                "SELECT count(*) FROM issue_users WHERE project_id=$1", project_id
+                "SELECT count(*) FROM issue_users WHERE project_id=$1",
+                project_id,
             )
 
         assert len(issues) == 1
@@ -91,7 +110,8 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
 
         async with pool.acquire() as connection:
             await connection.execute(
-                "UPDATE issues SET status='resolved' WHERE id=$1", issues[0]["id"]
+                "UPDATE issues SET status='resolved' WHERE id=$1",
+                issues[0]["id"],
             )
             next_event_id = uuid.uuid4()
             await persist_event_and_upsert_issue(
@@ -106,9 +126,12 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
                 user_id="user-0",
             )
             regressed = await connection.fetchrow(
-                "SELECT first_seen, last_seen, event_count, user_count, status "
-                "FROM issues WHERE project_id=$1 AND fingerprint=$2",
-                project_id, "same-fingerprint",
+                """
+                SELECT first_seen, last_seen, event_count, user_count, status
+                FROM issues WHERE project_id=$1 AND fingerprint=$2
+                """,
+                project_id,
+                "same-fingerprint",
             )
         assert regressed is not None
         assert regressed["first_seen"] == base_time
