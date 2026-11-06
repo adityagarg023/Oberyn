@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";\nimport type { EventV1 } from "../../contracts/src/events.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EventV1 } from "../../contracts/src/events.js";
 import { captureException, captureMessage, generateEventId, init } from "./index";
 
 const dsn = "https://public-key@ingest.oberyn.dev/42";
