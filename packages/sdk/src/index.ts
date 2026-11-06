@@ -1,5 +1,7 @@
 import type { EventLevel, EventV1, StackFrameV1 } from "../../contracts/src/events.js";
 import { EVENT_SCHEMA_VERSION } from "../../contracts/src/events.js";
+import { configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
+import type { BreadcrumbOptions } from "./breadcrumbs.js";
 
 export const SDK_VERSION = "0.1.0";
 
@@ -10,6 +12,7 @@ export interface OberynOptions {
   sampleRate?: number;
   beforeSend?: (event: EventV1) => EventV1 | null;
   fetch?: typeof globalThis.fetch;
+  breadcrumbs?: BreadcrumbOptions;
 }
 
 export interface CaptureOptions {
@@ -121,6 +124,7 @@ function createEvent(
     ...(options.release ? { release: options.release } : {}),
     ...(options.environment ? { environment: options.environment } : {}),
     exception,
+    breadcrumbs: getBreadcrumbs(),
   };
 }
 
@@ -137,6 +141,7 @@ export function init(options: OberynOptions): void {
       return;
     }
     const transport = options.fetch ?? globalThis.fetch;
+    configureBreadcrumbs(options.breadcrumbs);
     client = {
       dsn,
       options: { ...options, sampleRate },
@@ -187,6 +192,8 @@ export function captureException(error: unknown, options: CaptureOptions = {}): 
 export function captureMessage(message: string, options: CaptureOptions = {}): string | null {
   return safe(null, () => send(message, LEVELS.includes(options.level ?? "info") ? options.level ?? "info" : "info", "message"));
 }
+export { addBreadcrumb, clearBreadcrumbs, configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
+export type { BreadcrumbInput, BreadcrumbOptions } from "./breadcrumbs.js";
 export { Transport } from "./transport.js";
 export type { TransportOptions } from "./transport.js";
 export { scrubEvent, scrubString } from "./scrub.js";
