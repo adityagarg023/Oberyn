@@ -29,14 +29,14 @@ def upgrade() -> None:
     )
     op.create_index("ix_issue_users_project", "issue_users", ["project_id"])
     op.execute("""
-        CREATE FUNCTION increment_issue_user_count() RETURNS trigger AS $
+        CREATE FUNCTION increment_issue_user_count() RETURNS trigger AS $function$
         BEGIN
             UPDATE issues
             SET user_count = user_count + 1
             WHERE id = NEW.issue_id AND project_id = NEW.project_id;
             RETURN NEW;
         END;
-        $ LANGUAGE plpgsql
+        $function$ LANGUAGE plpgsql
     """)
     op.execute("""
         CREATE TRIGGER trg_issue_users_increment_count
