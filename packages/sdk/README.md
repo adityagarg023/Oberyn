@@ -40,3 +40,34 @@ become new SDK-captured errors.
 
 The bundle size budget is <5 KB gzipped; verify the generated artifact after
 building with the package's production minification settings.
+
+## Breadcrumbs
+
+Breadcrumbs are held in a bounded in-memory ring buffer (50 by default) and attached to
+captured events in oldest-to-newest order. Sensitive-looking keys and credential-like
+strings are redacted before storage.
+
+```ts
+import { init, addBreadcrumb, instrumentBrowser } from "@oberyn/sdk";
+
+init({
+  dsn: "https://<public-key>@ingest.oberyn.dev/<project-id>",
+  breadcrumbs: {
+    maxBreadcrumbs: 50,
+    ignoreCategories: ["console.log"],
+    beforeBreadcrumb(crumb) {
+      return crumb;
+    },
+  },
+});
+
+const stop = instrumentBrowser(); // clicks, navigation, fetch, XHR and console
+addBreadcrumb({ category: "checkout", message: "Started checkout" });
+// Call stop() when the application instrumentation should be removed.
+```
+
+Framework adapters are separate entry points and do not add framework dependencies:
+`@oberyn/sdk/react`, `@oberyn/sdk/next`, and `@oberyn/sdk/express`.
+The React error boundary is created with the host application's React runtime.
+Express error middleware should be mounted after routes and delegates the original
+error to the next error handler.
