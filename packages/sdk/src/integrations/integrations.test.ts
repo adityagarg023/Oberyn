@@ -58,6 +58,33 @@ describe("framework integrations", () => {
     expect(() => captureException(new Error("host error"))).not.toThrow();
   });
 
+  it("captures browser clicks and history navigation", () => {
+    let clickListener: ((event: unknown) => void) | undefined;
+    const documentMock = {
+      addEventListener: vi.fn((_name: string, listener: (event: unknown) => void) => { clickListener = listener; }),
+      removeEventListener: vi.fn(),
+    };
+    const historyMock = { pushState: vi.fn((_state: unknown, _title: string, href: string) => href), replaceState: vi.fn() };
+    vi.stubGlobal("document", documentMock);
+    vi.stubGlobal("history", historyMock);
+    const stop = instrumentBrowser({ fetch: false, xhr: false, console: false });
+    clickListener?.({ target: { tagName: "BUTTON", id: "pay", getAttribute: () => "Pay now" } });
+    expect(historyMock.pushState({}, "", "/checkout")).toBe("/checkout");
+    expect(getBreadcrumbs().map((crumb) => crumb.category)).toContain("ui.click");
+    expect(getBreadcrumbs().map((crumb) => crumb.category)).toContain("navigation");
+    stop();
+  });
+
+  it("captures console calls without suppressing the original method", () => {
+    const log = vi.fn();
+    vi.stubGlobal("console", { log, info: vi.fn(), warn: vi.fn(), error: vi.fn() });
+    const stop = instrumentBrowser({ clicks: false, navigation: false, fetch: false, xhr: false });
+    console.log("checkout started");
+    expect(log).toHaveBeenCalledWith("checkout started");
+    expect(getBreadcrumbs()[0]?.category).toBe("console.log");
+    stop();
+  });
+
   it("wraps browser fetch and restores it during cleanup", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ status: 204 });
     vi.stubGlobal("fetch", fetchMock);
