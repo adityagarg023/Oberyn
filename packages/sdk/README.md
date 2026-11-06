@@ -28,7 +28,7 @@ captureMessage("Checkout started");
 ```
 
 The DSN public key and project ID are sent in headers. Events are POSTed to
-`/api/v1/events` as Event V1 JSON. The SDK intentionally does not install
+`/api/{project-id}/envelope` as Event V1 JSON. The SDK intentionally does not install
 global error listeners, and transport failures are swallowed so they cannot
 become new SDK-captured errors.
 
