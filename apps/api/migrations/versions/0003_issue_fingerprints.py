@@ -3,8 +3,8 @@
 Revision ID: 0003_issue_fingerprints
 Revises: 0002_raw_event_ingestion, 0002_raw_events
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0003_issue_fingerprints"
 down_revision = ("0002_raw_event_ingestion", "0002_raw_events")
