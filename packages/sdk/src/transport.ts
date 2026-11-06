@@ -158,7 +158,7 @@ export class Transport {
         this.options.baseRetryDelayMs * 2 ** (attempts - 1),
         this.options.maxRetryDelayMs,
       );
-      const delay = Math.min(serverDelay ?? exponential, this.options.maxRetryDelayMs);
+      const delay = serverDelay ?? exponential;
       return [{ ...item, attempts, nextAttemptAt: now + delay }];
     });
     this.queue.unshift(...retryable);
