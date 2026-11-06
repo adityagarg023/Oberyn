@@ -23,7 +23,8 @@ issue AS (
     SELECT gen_random_uuid(), $1, $2, $5, $6, $7, $7, 1, 0, 'unresolved'
     WHERE EXISTS (SELECT 1 FROM inserted)
     ON CONFLICT (project_id, fingerprint) DO UPDATE
-    SET last_seen = GREATEST(issues.last_seen, EXCLUDED.last_seen),
+    SET first_seen = LEAST(issues.first_seen, EXCLUDED.first_seen),
+        last_seen = GREATEST(issues.last_seen, EXCLUDED.last_seen),
         event_count = issues.event_count + 1,
         status = CASE
             WHEN issues.status = 'resolved' THEN 'regressed'
@@ -46,7 +47,7 @@ SELECT
 
 
 async def persist_event_and_upsert_issue(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | asyncpg.Connection,
     *,
     project_id: UUID,
     organization_id: UUID,
