@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
+from app.dashboard import router as dashboard_router
 from app.db import engine
 from app.fingerprints import generate_fingerprint
 from app.issues import persist_event_and_upsert_issue
-from app.dashboard import router as dashboard_router
 
 
 def get_database_engine() -> AsyncEngine:
