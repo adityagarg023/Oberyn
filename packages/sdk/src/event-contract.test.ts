@@ -20,6 +20,7 @@ function isEventV1(value: unknown): value is EventV1 {
     "environment", "exception", "breadcrumbs", "user", "tags", "request",
   ])) return false;
   if (value.schema_version !== 1 || typeof value.event_id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.event_id) ||
       typeof value.timestamp !== "string" || Number.isNaN(Date.parse(value.timestamp)) ||
       typeof value.platform !== "string" ||
       !["fatal", "error", "warning", "info", "debug", "log"].includes(String(value.level))) return false;
