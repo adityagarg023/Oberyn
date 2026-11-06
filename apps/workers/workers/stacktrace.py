@@ -61,7 +61,9 @@ def _parse_location(location: str) -> tuple[str, int | None, int | None] | None:
     match = _LOCATION_RE.match(location)
     if match is None:
         # A filename without line/column is still useful for grouping.
-        if location.startswith(("http://", "https://", "file://", "/", "./", "../")):
+        if location.startswith(("http://", "https://", "file://")):
+            return normalize_filename(location), None, None
+        if ":" not in location and location.startswith(("/", "./", "../")):
             return normalize_filename(location), None, None
         return None
     filename = normalize_filename(match.group("file"))
