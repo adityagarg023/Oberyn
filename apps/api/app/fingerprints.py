@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import re
+from urllib.parse import urlsplit, urlunsplit
+
 from app.contracts.events import EventV1
 
-_UUID_RE = re.compile(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b")
+_UUID_RE = re.compile(
+    r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b"
+)
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>'\"\\)]+")
 _NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])")
 _SPACE_RE = re.compile(r"\s+")
@@ -14,7 +18,6 @@ _SPACE_RE = re.compile(r"\s+")
 def _normalize_filename(value: str) -> str:
     value = value.strip().split("#", 1)[0].split("?", 1)[0]
     if value.startswith(("http://", "https://")):
-        from urllib.parse import urlsplit, urlunsplit
         parts = urlsplit(value)
         return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, "", ""))
     return value
@@ -27,7 +30,16 @@ def _normalize_message(value: str) -> str:
     return _SPACE_RE.sub(" ", value)
 
 
+def _normalize_function(value: str) -> str:
+    value = re.sub(r"^(?:async\s+)?new\s+", "", value.strip())
+    value = _SPACE_RE.sub(" ", value)
+    if value.lower() in {"", "?", "anonymous", "<anonymous>", "unknown"}:
+        return "<anonymous>"
+    return value
+
+
 def generate_fingerprint(event: EventV1, top_n: int = 5) -> str:
+    """Hash exception type and the first N in-app module/function pairs."""
     if top_n < 1:
         raise ValueError("top_n must be at least 1")
     if event.fingerprint is not None:
@@ -38,7 +50,7 @@ def generate_fingerprint(event: EventV1, top_n: int = 5) -> str:
             if not frame.in_app:
                 continue
             module = _normalize_filename(frame.filename)
-            function = _SPACE_RE.sub(" ", frame.function.strip())
+            function = _normalize_function(frame.function)
             if module:
                 pairs.append(f"{module}\0{function}")
             if len(pairs) == top_n:
