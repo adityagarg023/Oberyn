@@ -15,7 +15,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         """
-        CREATE TABLE raw_events (
+        CREATE TABLE IF NOT EXISTS raw_events (
             project_id uuid NOT NULL,
             organization_id uuid NOT NULL,
             event_id uuid NOT NULL,
@@ -33,7 +33,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX ix_raw_events_received_at
+        CREATE INDEX IF NOT EXISTS ix_raw_events_received_at
         ON raw_events (received_at)
         """
     )
