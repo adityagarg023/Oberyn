@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from app.contracts.events import validate_event_payload
 from app.fingerprints import generate_fingerprint
@@ -9,7 +10,7 @@ from app.fingerprints import generate_fingerprint
 FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
 
 
-def event_payload() -> dict[str, object]:
+def event_payload() -> dict[str, Any]:
     return json.loads((FIXTURES / "event-v1.valid.json").read_text())
 
 
@@ -28,6 +29,27 @@ def test_different_in_app_functions_produce_different_fingerprints() -> None:
     second = event_payload()
     second["exception"]["stacktrace"][0]["function"] = "differentHandler"
     assert generate_fingerprint(validate_event_payload(json.dumps(first).encode())) != generate_fingerprint(
+        validate_event_payload(json.dumps(second).encode())
+    )
+
+
+def test_exception_type_is_part_of_the_fingerprint() -> None:
+    first = event_payload()
+    second = event_payload()
+    second["exception"]["type"] = "DifferentError"
+    assert generate_fingerprint(validate_event_payload(json.dumps(first).encode())) != generate_fingerprint(
+        validate_event_payload(json.dumps(second).encode())
+    )
+
+
+def test_only_the_first_five_in_app_frames_are_used() -> None:
+    first = event_payload()
+    second = event_payload()
+    base_frame = first["exception"]["stacktrace"][0]
+    first["exception"]["stacktrace"] = [dict(base_frame, function=f"frame-{index}") for index in range(6)]
+    second["exception"]["stacktrace"] = [dict(base_frame, function=f"frame-{index}") for index in range(5)]
+    second["exception"]["stacktrace"].append(dict(base_frame, function="different-tail"))
+    assert generate_fingerprint(validate_event_payload(json.dumps(first).encode())) == generate_fingerprint(
         validate_event_payload(json.dumps(second).encode())
     )
 
