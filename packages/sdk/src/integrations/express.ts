@@ -1,4 +1,5 @@
 import { captureException } from "../index.js";
+import { addBreadcrumb } from "../breadcrumbs.js";
 
 export interface ExpressRequestLike {
   method?: string;
@@ -37,8 +38,7 @@ export function oberynExpressRequestMiddleware(
   try {
     // Avoid collecting query strings, headers, cookies, or request bodies.
     const path = String(request.originalUrl ?? request.url ?? "").split("?")[0].slice(0, 300);
-    // Lazy import is intentionally avoided so this middleware stays synchronous.
-    void path;
+    addBreadcrumb({ type: "http", category: "express", data: { method: String(request.method ?? "GET"), url: path } });
   } catch { /* no-op */ }
   try { next(); } catch { /* no-op */ }
 }
