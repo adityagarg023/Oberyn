@@ -38,12 +38,6 @@ new_user AS (
     WHERE $8::text IS NOT NULL
     ON CONFLICT (issue_id, user_id) DO NOTHING
     RETURNING issue_id
-),
-user_count_update AS (
-    UPDATE issues
-    SET user_count = user_count + 1
-    WHERE id IN (SELECT issue_id FROM new_user)
-    RETURNING id
 )
 SELECT
     (SELECT event_id FROM inserted) AS inserted_event_id,
