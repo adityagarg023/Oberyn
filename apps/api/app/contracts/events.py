@@ -50,6 +50,13 @@ class EventV1(StrictModel):
     tags: dict[str, str] = Field(default_factory=dict)
     request: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("timestamp")
+    @classmethod
+    def timestamp_must_include_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp must include a timezone")
+        return value
+
     @field_validator("breadcrumbs", "request", mode="before")
     @classmethod
     def require_json_object_data(cls, value: Any) -> Any:
