@@ -1,0 +1,31 @@
+[
+  {
+    "name": "unsupported_schema_version",
+    "payload": { "schema_version": 2 }
+  },
+  {
+    "name": "unknown_top_level_field",
+    "payload": { "schema_version": 1, "unexpected": true }
+  },
+  {
+    "name": "wrong_type_for_in_app",
+    "payload": {
+      "schema_version": 1,
+      "event_id": "018f4e5a-7b2c-7abc-8def-0123456789ab",
+      "timestamp": "2026-11-06T08:30:00Z",
+      "platform": "javascript",
+      "level": "error",
+      "exception": {
+        "type": "TypeError",
+        "value": "bad",
+        "stacktrace": [{
+          "filename": "app.js",
+          "function": "run",
+          "lineno": 1,
+          "colno": 1,
+          "in_app": "yes"
+        }]
+      }
+    }
+  }
+]
