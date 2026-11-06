@@ -1,4 +1,5 @@
 import { captureException } from "../index.js";
+import { addBreadcrumb } from "../breadcrumbs.js";
 
 export interface ReactErrorInfo {
   componentStack?: string | null;
@@ -31,9 +32,7 @@ export function createErrorBoundary(React: ReactRuntime, fallback: unknown = nul
       componentDidCatch(error: Error, info: ReactErrorInfo): void {
         try {
           captureException(error, { level: "error" });
-          if (info?.componentStack) {
-            // Component context is kept separate from the exception message.
-          }
+          if (info?.componentStack) addBreadcrumb({ type: "error", category: "react", message: info.componentStack.slice(0, 500) });
         } catch { /* Never let monitoring break React's error recovery. */ }
       }
 
