@@ -41,7 +41,8 @@ function safe<T>(fallback: T, operation: () => T): T {
 function parseDsn(value: string): ParsedDsn | null {
   return safe(null, () => {
     const url = new URL(value);
-    const segments = url.pathname.split("/").filter(Boolean);\n    const projectId = segments[segments.length - 1];
+    const segments = url.pathname.split("/").filter(Boolean);
+    const projectId = segments[segments.length - 1];
     const publicKey = url.username;
     if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !projectId || !publicKey) return null;
     if (url.password || url.search || url.hash) return null;
@@ -186,3 +187,6 @@ export function captureException(error: unknown, options: CaptureOptions = {}): 
 export function captureMessage(message: string, options: CaptureOptions = {}): string | null {
   return safe(null, () => send(message, LEVELS.includes(options.level ?? "info") ? options.level ?? "info" : "info", "message"));
 }
+export { Transport } from "./transport.js";
+export type { TransportOptions } from "./transport.js";
+export { scrubEvent, scrubString } from "./scrub.js";
