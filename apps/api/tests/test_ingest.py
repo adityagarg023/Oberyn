@@ -18,17 +18,52 @@ PROJECT_KEY = "test-public-project-key"
 class FakePool:
     def __init__(self) -> None:
         self.events: dict[tuple[UUID, UUID], dict[str, Any]] = {}
+        self.issues: dict[tuple[UUID, str], dict[str, Any]] = {}
+        self.issue_users: dict[tuple[UUID, str], set[str]] = {}
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
         self.closed = False
 
     async def close(self) -> None:
         self.closed = True
 
-    async def fetchrow(self, query: str, project_id: UUID, key_hash: str) -> dict[str, UUID] | None:
-        assert "project_keys" in query
-        if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
-            return {"id": PROJECT_ID, "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")}
-        return None
+    async def fetchrow(self, query: str, *args: Any) -> dict[str, Any] | None:
+        if "project_keys" in query:
+            project_id, key_hash = args
+            if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
+                return {"id": PROJECT_ID, "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")}
+            return None
+
+        assert "WITH inserted AS" in query
+        project_id, organization_id, event_id, payload_json, fingerprint, title, occurred_at, user_id = args
+        event_key = (project_id, event_id)
+        if event_key in self.events:
+            return {"inserted_event_id": None, "issue_id": None}
+
+        self.events[event_key] = json.loads(payload_json)
+        issue_key = (project_id, fingerprint)
+        if issue_key not in self.issues:
+            self.issues[issue_key] = {
+                "id": UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+                "first_seen": occurred_at,
+                "last_seen": occurred_at,
+                "event_count": 1,
+                "user_count": 0,
+                "status": "unresolved",
+                "title": title,
+            }
+            self.issue_users[issue_key] = set()
+        else:
+            issue = self.issues[issue_key]
+            issue["event_count"] += 1
+            issue["last_seen"] = max(issue["last_seen"], occurred_at)
+            if issue["status"] == "resolved":
+                issue["status"] = "regressed"
+
+        if user_id is not None and user_id not in self.issue_users[issue_key]:
+            self.issue_users[issue_key].add(user_id)
+            self.issues[issue_key]["user_count"] += 1
+
+        return {"inserted_event_id": event_id, "issue_id": self.issues[issue_key]["id"]}
 
     async def fetchval(
         self,
@@ -38,12 +73,7 @@ class FakePool:
         event_id: UUID,
         payload_json: str,
     ) -> UUID | None:
-        assert "ON CONFLICT (project_id, event_id) DO NOTHING" in query
-        key = (project_id, event_id)
-        if key in self.events:
-            return None
-        self.events[key] = json.loads(payload_json)
-        return event_id
+        raise AssertionError("raw event persistence must use the atomic issue-upsert statement")
 
 
 @pytest.fixture
@@ -93,6 +123,9 @@ def test_valid_event_is_accepted_and_stored(api_client: tuple[TestClient, FakePo
         "duplicate": False,
     }
     assert len(pool.events) == 1
+    assert len(pool.issues) == 1
+    issue = next(iter(pool.issues.values()))
+    assert issue["event_count"] == 1
 
 
 def test_invalid_event_payload_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
@@ -165,6 +198,7 @@ def test_duplicate_event_is_idempotently_accepted(api_client: tuple[TestClient, 
     assert second.status_code == 202
     assert second.json()["duplicate"] is True
     assert len(pool.events) == 1
+    assert next(iter(pool.issues.values()))["event_count"] == 1
 
 
 def test_oversized_content_length_returns_413(api_client: tuple[TestClient, FakePool]) -> None:
