@@ -19,7 +19,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ./scripts/check-size.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
