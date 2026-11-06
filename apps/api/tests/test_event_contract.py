@@ -83,3 +83,5 @@ def test_environment_can_override_event_limits() -> None:
     assert settings.event_max_stack_depth == 12
     assert settings.event_max_breadcrumbs == 8
     assert settings.event_max_string_length == 512
+    assert settings.event_limits.max_payload_bytes == 1024
+    assert settings.event_limits.max_stack_depth == 12
