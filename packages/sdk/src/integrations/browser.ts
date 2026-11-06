@@ -57,7 +57,7 @@ export function instrumentBrowser(options: BrowserInstrumentationOptions = {}): 
       const original = history[method];
       if (typeof original !== "function") continue;
       const wrapped = function(this: unknown, ...args: unknown[]) {
-        const result = safely(() => original.apply(this, args));
+        const result = original.apply(this, args);
         safely(() => addBreadcrumb({ type: "navigation", category: "navigation", data: { to: String(args[2] ?? "") } }));
         return result;
       };
