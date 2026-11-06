@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.contracts.events import EventLimits
+
 Environment = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
@@ -19,6 +21,15 @@ class Settings(BaseModel):
     event_max_stack_depth: int = Field(default=50, gt=0)
     event_max_breadcrumbs: int = Field(default=100, ge=0)
     event_max_string_length: int = Field(default=4096, gt=0)
+
+    @property
+    def event_limits(self) -> EventLimits:
+        return EventLimits(
+            max_payload_bytes=self.event_max_payload_bytes,
+            max_stack_depth=self.event_max_stack_depth,
+            max_breadcrumbs=self.event_max_breadcrumbs,
+            max_string_length=self.event_max_string_length,
+        )
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
