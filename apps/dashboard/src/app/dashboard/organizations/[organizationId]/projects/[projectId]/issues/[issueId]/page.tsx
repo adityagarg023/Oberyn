@@ -16,7 +16,6 @@ type Detail={
  breadcrumbs:Breadcrumb[];
 };
 const panel="rounded-xl border border-white/10 bg-[#10141d] p-5";
-const button="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-40";
 export default function IssueDetail(){
  const p=useParams<{organizationId:string;projectId:string;issueId:string}>(),router=useRouter(),{getToken}=useAuth(),qc=useQueryClient();
  const [targetIssueId,setTargetIssueId]=useState("");
