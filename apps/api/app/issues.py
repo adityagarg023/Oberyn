@@ -61,6 +61,7 @@ issue AS (
         resolved_in_release = CASE
             WHEN issues.status = 'resolved'
              AND EXCLUDED.last_release IS NOT NULL
+             AND EXCLUDED.last_seen > issues.last_seen
              AND EXCLUDED.last_seen <= issues.resolved_at
             THEN EXCLUDED.last_release
             ELSE issues.resolved_in_release
