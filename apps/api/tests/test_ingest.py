@@ -47,6 +47,7 @@ class FakePool:
             title,
             occurred_at,
             user_id,
+            release,
         ) = args
         event_key = (project_id, event_id)
         if event_key in self.events:
@@ -63,6 +64,8 @@ class FakePool:
                 "user_count": 0,
                 "status": "unresolved",
                 "title": title,
+                "first_release": release,
+                "last_release": release,
             }
             self.issue_users[issue_key] = set()
         else:
@@ -70,7 +73,9 @@ class FakePool:
             issue["event_count"] += 1
             issue["first_seen"] = min(issue["first_seen"], occurred_at)
             issue["last_seen"] = max(issue["last_seen"], occurred_at)
-            if issue["status"] == "resolved":
+            if release is not None:
+                issue["last_release"] = release
+            if issue["status"] == "resolved" and release is not None and release != issue.get("resolved_in_release"):
                 issue["status"] = "regressed"
 
         if user_id is not None and user_id not in self.issue_users[issue_key]:

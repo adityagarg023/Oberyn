@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import os
 import re
 import secrets
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -94,6 +96,31 @@ class OrganizationInput(BaseModel):
 class ProjectInput(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     platform: str = Field(default="javascript", max_length=40)
+
+
+class IssueStatusInput(BaseModel):
+    status: Literal["unresolved", "resolved", "ignored"]
+
+
+class IssueMergeInput(BaseModel):
+    target_issue_id: UUID
+
+
+def require_admin(member: Mapping[str, Any], action: str) -> None:
+    if member["role"] not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail=f"Only organization admins can {action}")
+
+
+def parse_tag_filter(value: str | None) -> dict[str, str]:
+    if not value:
+        return {}
+    parsed: dict[str, str] = {}
+    for pair in value.split(","):
+        key, separator, tag_value = pair.partition("=")
+        if not separator or not key.strip() or not tag_value.strip():
+            raise HTTPException(status_code=422, detail="Tags must use key=value pairs")
+        parsed[key.strip()] = tag_value.strip()
+    return parsed
 
 
 @router.get("/organizations")
@@ -239,6 +266,11 @@ async def list_issues(
     org_id: UUID,
     project_id: UUID,
     status: str = Query("all"),
+    release: str | None = None,
+    environment: str | None = None,
+    level: str | None = None,
+    tags: str | None = None,
+    search: str | None = Query(None, max_length=200),
     cursor: str | None = None,
     limit: int = Query(25, ge=1, le=100),
     user: dict[str, str] = Depends(current_user),
@@ -251,22 +283,52 @@ async def list_issues(
         "SELECT 1 FROM projects WHERE id=$1 AND organization_id=$2", project_id, org_id
     ):
         raise HTTPException(status_code=404, detail="Project not found")
+
     args: list[Any] = [project_id]
-    where = "project_id=$1"
+    where = ["issues.project_id=$1"]
     if status != "all":
         args.append(status)
-        where += " AND status=$" + str(len(args))
+        where.append(f"issues.status=${len(args)}")
+
+    event_filters = ["re.project_id=issues.project_id", "re.issue_id=issues.id"]
+    if release:
+        args.append(release)
+        event_filters.append(f"re.payload->>'release'=${len(args)}")
+    if environment:
+        args.append(environment)
+        event_filters.append(f"re.payload->>'environment'=${len(args)}")
+    if level:
+        args.append(level)
+        event_filters.append(f"re.payload->>'level'=${len(args)}")
+    tag_filter = parse_tag_filter(tags)
+    if tag_filter:
+        args.append(json.dumps(tag_filter))
+        event_filters.append(f"re.payload->'tags' @> ${len(args)}::jsonb")
+    if len(event_filters) > 2:
+        where.append("EXISTS (SELECT 1 FROM raw_events re WHERE " + " AND ".join(event_filters) + ")")
+
+    if search:
+        args.append("%" + search.strip() + "%")
+        search_param = f"${len(args)}"
+        where.append(
+            "(issues.title ILIKE " + search_param
+            + " OR issues.fingerprint ILIKE " + search_param
+            + " OR EXISTS (SELECT 1 FROM raw_events rs WHERE rs.project_id=issues.project_id "
+            + "AND rs.issue_id=issues.id AND rs.payload::text ILIKE " + search_param + "))"
+        )
+
     if cursor:
         seen, issue_id = decode_cursor(cursor)
         args.extend([seen, issue_id])
-        where += " AND (last_seen,id) < ($" + str(len(args) - 1) + ",$" + str(len(args)) + ")"
+        where.append(f"(issues.last_seen,issues.id) < (${len(args)-1},${len(args)})")
+
     args.append(limit + 1)
     rows = await db.fetch(
-        """SELECT id,title,status,first_seen,last_seen,event_count,user_count FROM issues
-           WHERE """
-        + where
-        + " ORDER BY last_seen DESC,id DESC LIMIT $"
-        + str(len(args)),
+        """SELECT issues.id,issues.title,issues.status,issues.first_seen,issues.last_seen,
+                  issues.event_count,issues.user_count,issues.first_release,issues.last_release
+           FROM issues WHERE """
+        + " AND ".join(where)
+        + f" ORDER BY issues.last_seen DESC,issues.id DESC LIMIT ${len(args)}",
         *args,
     )
     more = len(rows) > limit
@@ -289,7 +351,8 @@ async def issue_detail(
 ) -> dict[str, Any]:
     await membership(db, org_id, user)
     issue = await db.fetchrow(
-        """SELECT id,title,status,first_seen,last_seen,event_count,user_count,fingerprint
+        """SELECT id,title,status,first_seen,last_seen,event_count,user_count,fingerprint,
+                  first_release,last_release,resolved_in_release,resolved_at
            FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3""",
         issue_id,
         project_id,
@@ -304,7 +367,109 @@ async def issue_detail(
         project_id,
         issue_id,
     )
-    return {"issue": dict(issue), "latest_event": dict(event) if event else None}
+    return {
+        "issue": dict(issue),
+        "latest_event": dict(event) if event else None,
+        "breadcrumbs": (event["payload"].get("breadcrumbs", []) if event else []),
+    }
+
+
+@router.patch("/organizations/{org_id}/projects/{project_id}/issues/{issue_id}")
+async def update_issue_status(
+    org_id: UUID,
+    project_id: UUID,
+    issue_id: UUID,
+    body: IssueStatusInput,
+    user: dict[str, str] = Depends(current_user),
+    db: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    member = await membership(db, org_id, user)
+    require_admin(member, "change issue status")
+    row = await db.fetchrow(
+        """UPDATE issues
+           SET status=$4,
+               resolved_at=CASE WHEN $4='resolved' THEN now() ELSE NULL END,
+               resolved_in_release=CASE WHEN $4='resolved' THEN last_release ELSE NULL END
+           WHERE id=$1 AND project_id=$2 AND organization_id=$3
+           RETURNING id,status,resolved_at,resolved_in_release""",
+        issue_id,
+        project_id,
+        org_id,
+        body.status,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    return {"issue": dict(row)}
+
+
+@router.post("/organizations/{org_id}/projects/{project_id}/issues/{issue_id}/merge")
+async def merge_issues(
+    org_id: UUID,
+    project_id: UUID,
+    issue_id: UUID,
+    body: IssueMergeInput,
+    user: dict[str, str] = Depends(current_user),
+    db: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    member = await membership(db, org_id, user)
+    require_admin(member, "merge issues")
+    if body.target_issue_id == issue_id:
+        raise HTTPException(status_code=422, detail="An issue cannot be merged into itself")
+
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            locked: dict[UUID, asyncpg.Record | None] = {}
+            for locked_id in sorted((issue_id, body.target_issue_id), key=str):
+                locked[locked_id] = await conn.fetchrow(
+                    "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR UPDATE",
+                    locked_id,
+                    project_id,
+                    org_id,
+                )
+            source = locked[issue_id]
+            target = locked[body.target_issue_id]
+            if source is None or target is None:
+                raise HTTPException(status_code=404, detail="Issue not found in this project")
+            await conn.execute(
+                "UPDATE raw_events SET issue_id=$1 WHERE project_id=$2 AND issue_id=$3",
+                target["id"], project_id, source["id"],
+            )
+            await conn.execute(
+                "UPDATE events SET issue_id=$1 WHERE project_id=$2 AND issue_id=$3",
+                target["id"], project_id, source["id"],
+            )
+            await conn.execute(
+                """INSERT INTO issue_users(issue_id,project_id,user_id)
+                   SELECT $1,project_id,user_id FROM issue_users WHERE issue_id=$2
+                   ON CONFLICT(issue_id,user_id) DO NOTHING""",
+                target["id"], source["id"],
+            )
+            merged = await conn.fetchrow(
+                """UPDATE issues AS target SET
+                       first_seen=LEAST(target.first_seen,source.first_seen),
+                       last_seen=GREATEST(target.last_seen,source.last_seen),
+                       event_count=target.event_count+source.event_count,
+                       user_count=(SELECT count(*) FROM issue_users WHERE issue_id=target.id),
+                       first_release=CASE WHEN source.first_seen<target.first_seen THEN source.first_release ELSE target.first_release END,
+                       last_release=CASE WHEN source.last_seen>target.last_seen
+                                         THEN source.last_release ELSE target.last_release END,
+                       status=CASE WHEN target.status='resolved'
+                                        AND source.status IN ('unresolved','regressed')
+                                   THEN source.status ELSE target.status END,
+                       resolved_at=CASE WHEN target.status='resolved'
+                                             AND source.status IN ('unresolved','regressed')
+                                        THEN NULL ELSE target.resolved_at END,
+                       resolved_in_release=CASE WHEN target.status='resolved'
+                                                      AND source.status IN ('unresolved','regressed')
+                                                 THEN NULL ELSE target.resolved_in_release END
+                   FROM issues AS source
+                   WHERE target.id=$1 AND source.id=$2
+                   RETURNING target.id,target.title,target.status,target.event_count,target.user_count,
+                             target.first_seen,target.last_seen,target.first_release,target.last_release""",
+                target["id"], source["id"],
+            )
+            await conn.execute("DELETE FROM issues WHERE id=$1 AND project_id=$2", source["id"], project_id)
+    return {"issue": dict(merged), "merged_issue_id": str(issue_id)}
 
 
 @router.get("/organizations/{org_id}/projects/{project_id}/events/counts")

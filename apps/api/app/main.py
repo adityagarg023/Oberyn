@@ -198,6 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title=f"{event.exception.type}: {event.exception.value}",
                 occurred_at=event.timestamp,
                 user_id=event.user.id if event.user is not None else None,
+                release=event.release,
             )
         except asyncpg.PostgresError as exc:
             raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
