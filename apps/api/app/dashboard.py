@@ -447,7 +447,7 @@ async def merge_issues(
                        last_seen=GREATEST(target.last_seen,source.last_seen),
                        event_count=target.event_count+source.event_count,
                        user_count=(SELECT count(*) FROM issue_users WHERE issue_id=target.id),
-                       first_release=COALESCE(target.first_release,source.first_release),
+                       first_release=CASE WHEN source.first_seen<target.first_seen THEN source.first_release ELSE target.first_release END,
                        last_release=CASE WHEN source.last_seen>target.last_seen
                                          THEN source.last_release ELSE target.last_release END,
                        status=CASE WHEN target.status='resolved'
