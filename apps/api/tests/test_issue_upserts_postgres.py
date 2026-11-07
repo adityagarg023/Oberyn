@@ -111,7 +111,8 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
 
         async with pool.acquire() as connection:
             await connection.execute(
-                "UPDATE issues SET status='resolved' WHERE id=$1",
+                "UPDATE issues SET status='resolved', resolved_at=now(), "
+                "resolved_in_release=last_release WHERE id=$1",
                 issues[0]["id"],
             )
             next_event_id = uuid.uuid4()
