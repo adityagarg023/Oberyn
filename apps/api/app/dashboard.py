@@ -453,7 +453,13 @@ async def merge_issues(
                                          THEN source.last_release ELSE target.last_release END,
                        status=CASE WHEN target.status='resolved'
                                         AND source.status IN ('unresolved','regressed')
-                                   THEN source.status ELSE target.status END
+                                   THEN source.status ELSE target.status END,
+                       resolved_at=CASE WHEN target.status='resolved'
+                                             AND source.status IN ('unresolved','regressed')
+                                        THEN NULL ELSE target.resolved_at END,
+                       resolved_in_release=CASE WHEN target.status='resolved'
+                                                      AND source.status IN ('unresolved','regressed')
+                                                 THEN NULL ELSE target.resolved_in_release END
                    FROM issues AS source
                    WHERE target.id=$1 AND source.id=$2
                    RETURNING target.id,target.title,target.status,target.event_count,target.user_count,
