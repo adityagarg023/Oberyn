@@ -75,6 +75,7 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
                     title="RuntimeError: failed",
                     occurred_at=base_time + timedelta(seconds=index),
                     user_id=f"user-{index % 4}",
+                    release="1.0.0",
                 )
             assert result["inserted_event_id"] == event_id
             assert result["issue_id"] is not None
@@ -110,7 +111,8 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
 
         async with pool.acquire() as connection:
             await connection.execute(
-                "UPDATE issues SET status='resolved' WHERE id=$1",
+                "UPDATE issues SET status='resolved', resolved_at=now(), "
+                "resolved_in_release=last_release WHERE id=$1",
                 issues[0]["id"],
             )
             next_event_id = uuid.uuid4()
@@ -124,6 +126,7 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
                 title="RuntimeError: failed",
                 occurred_at=base_time + timedelta(seconds=40),
                 user_id="user-0",
+                release="1.0.0",
             )
             regressed = await connection.fetchrow(
                 """
@@ -134,10 +137,36 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
                 "same-fingerprint",
             )
         assert regressed is not None
+        assert regressed["status"] == "resolved"
+
+        async with pool.acquire() as connection:
+            next_event_id = uuid.uuid4()
+            await persist_event_and_upsert_issue(
+                connection,
+                project_id=project_id,
+                organization_id=organization_id,
+                event_id=next_event_id,
+                payload_json=json.dumps({"event_id": str(next_event_id)}),
+                fingerprint="same-fingerprint",
+                title="RuntimeError: failed",
+                occurred_at=base_time + timedelta(seconds=41),
+                user_id="user-0",
+                release="1.1.0",
+            )
+            regressed = await connection.fetchrow(
+                "SELECT first_seen,last_seen,event_count,user_count,status,first_release,"
+                "last_release FROM issues "
+                "WHERE project_id=$1 AND fingerprint=$2",
+                project_id,
+                "same-fingerprint",
+            )
+        assert regressed is not None
         assert regressed["first_seen"] == base_time
-        assert regressed["last_seen"] == base_time + timedelta(seconds=40)
-        assert regressed["event_count"] == 41
+        assert regressed["last_seen"] == base_time + timedelta(seconds=41)
+        assert regressed["event_count"] == 42
         assert regressed["user_count"] == 4
         assert regressed["status"] == "regressed"
+        assert regressed["first_release"] == "1.0.0"
+        assert regressed["last_release"] == "1.1.0"
     finally:
         await pool.close()
