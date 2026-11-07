@@ -163,5 +163,7 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
         assert regressed["event_count"] == 42
         assert regressed["user_count"] == 4
         assert regressed["status"] == "regressed"
+        assert regressed["first_release"] == "1.0.0"
+        assert regressed["last_release"] == "1.1.0"
     finally:
         await pool.close()
