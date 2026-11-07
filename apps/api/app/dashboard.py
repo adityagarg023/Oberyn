@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import os
 import re
 import secrets
@@ -102,6 +103,11 @@ class IssueStatusInput(BaseModel):
 
 class IssueMergeInput(BaseModel):
     target_issue_id: UUID
+
+
+def require_admin(member: asyncpg.Record, action: str) -> None:
+    if member["role"] not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail=f"Only organization admins can {action}")
 
 
 def parse_tag_filter(value: str | None) -> dict[str, str]:
@@ -295,7 +301,6 @@ async def list_issues(
         event_filters.append(f"re.payload->>'level'=${len(args)}")
     tag_filter = parse_tag_filter(tags)
     if tag_filter:
-        import json
         args.append(json.dumps(tag_filter))
         event_filters.append(f"re.payload->'tags' @> ${len(args)}::jsonb")
     if len(event_filters) > 2:
@@ -378,8 +383,7 @@ async def update_issue_status(
     db: asyncpg.Pool = Depends(get_pool),
 ) -> dict[str, Any]:
     member = await membership(db, org_id, user)
-    if member["role"] not in {"owner", "admin"}:
-        raise HTTPException(status_code=403, detail="Only organization admins can change issue status")
+    require_admin(member, "change issue status")
     row = await db.fetchrow(
         """UPDATE issues
            SET status=$4,
@@ -407,8 +411,7 @@ async def merge_issues(
     db: asyncpg.Pool = Depends(get_pool),
 ) -> dict[str, Any]:
     member = await membership(db, org_id, user)
-    if member["role"] not in {"owner", "admin"}:
-        raise HTTPException(status_code=403, detail="Only organization admins can merge issues")
+    require_admin(member, "merge issues")
     if body.target_issue_id == issue_id:
         raise HTTPException(status_code=422, detail="An issue cannot be merged into itself")
 
