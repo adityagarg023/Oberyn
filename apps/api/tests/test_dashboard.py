@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.dashboard import (
+    IssueMergeInput,
     IssueStatusInput,
     current_user,
     decode_cursor,
@@ -18,7 +19,6 @@ from app.dashboard import (
     list_issues,
     membership,
     merge_issues,
-    IssueMergeInput,
     parse_tag_filter,
     require_admin,
     update_issue_status,
@@ -87,7 +87,7 @@ def test_tag_filter_rejects_malformed_pairs() -> None:
 
 def test_member_cannot_perform_issue_mutations() -> None:
     with pytest.raises(HTTPException) as error:
-        require_admin({"role": "member"}, "merge issues")  # type: ignore[arg-type]
+        require_admin({"role": "member"}, "merge issues")
     assert error.value.status_code == 403
 
 
