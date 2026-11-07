@@ -2,8 +2,8 @@
 
 Revision ID: 0006_issue_release_metadata
 """
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 
 revision = "0006_issue_release_metadata"
 down_revision = "0005_raw_event_issue_link"
