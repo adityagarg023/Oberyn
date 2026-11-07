@@ -34,17 +34,19 @@ issue AS (
     SET first_seen = LEAST(issues.first_seen, EXCLUDED.first_seen),
         last_seen = GREATEST(issues.last_seen, EXCLUDED.last_seen),
         event_count = issues.event_count + 1,
-        first_release = COALESCE(issues.first_release, EXCLUDED.first_release),
-        last_release = COALESCE(EXCLUDED.last_release, issues.last_release),
+        first_release = CASE
+            WHEN EXCLUDED.first_seen < issues.first_seen THEN EXCLUDED.first_release
+            ELSE COALESCE(issues.first_release, EXCLUDED.first_release)
+        END,
+        last_release = CASE
+            WHEN EXCLUDED.last_seen > issues.last_seen THEN EXCLUDED.last_release
+            ELSE COALESCE(issues.last_release, EXCLUDED.last_release)
+        END,
         status = CASE
             WHEN issues.status = 'resolved'
              AND EXCLUDED.last_release IS NOT NULL
              AND EXCLUDED.last_release IS DISTINCT FROM issues.resolved_in_release
-             AND EXISTS (
-                 SELECT 1 FROM release_upsert r
-                 WHERE r.version = EXCLUDED.last_release
-                   AND r.created_at > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
-             )
+             AND EXCLUDED.last_seen > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
             THEN 'regressed'
             ELSE issues.status
         END,
@@ -52,11 +54,7 @@ issue AS (
             WHEN issues.status = 'resolved'
              AND EXCLUDED.last_release IS NOT NULL
              AND EXCLUDED.last_release IS DISTINCT FROM issues.resolved_in_release
-             AND EXISTS (
-                 SELECT 1 FROM release_upsert r
-                 WHERE r.version = EXCLUDED.last_release
-                   AND r.created_at > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
-             )
+             AND EXCLUDED.last_seen > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
             THEN NULL
             ELSE issues.resolved_at
         END
@@ -104,7 +102,7 @@ async def persist_event_and_upsert_issue(
                     title,
                     occurred_at,
                     user_id,
-                release,
+                    release,
                 )
                 if result is not None and result["inserted_event_id"] is not None:
                     await connection.execute(
@@ -124,7 +122,7 @@ async def persist_event_and_upsert_issue(
             title,
             occurred_at,
             user_id,
-        release,
+            release,
         )
         if (
             result is not None
