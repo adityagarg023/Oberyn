@@ -9,8 +9,8 @@ import json
 import os
 import re
 import secrets
-from datetime import UTC, datetime, timedelta
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -418,14 +418,16 @@ async def merge_issues(
 
     async with db.acquire() as conn:
         async with conn.transaction():
-            source = await conn.fetchrow(
-                "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR UPDATE",
-                issue_id, project_id, org_id,
-            )
-            target = await conn.fetchrow(
-                "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR UPDATE",
-                body.target_issue_id, project_id, org_id,
-            )
+            locked: dict[UUID, asyncpg.Record | None] = {}
+            for locked_id in sorted((issue_id, body.target_issue_id), key=str):
+                locked[locked_id] = await conn.fetchrow(
+                    "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR UPDATE",
+                    locked_id,
+                    project_id,
+                    org_id,
+                )
+            source = locked[issue_id]
+            target = locked[body.target_issue_id]
             if source is None or target is None:
                 raise HTTPException(status_code=404, detail="Issue not found in this project")
             await conn.execute(
