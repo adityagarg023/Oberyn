@@ -16,6 +16,23 @@ def upgrade() -> None:
     op.add_column("issues", sa.Column("last_release", sa.String(length=200), nullable=True))
     op.add_column("issues", sa.Column("resolved_in_release", sa.String(length=200), nullable=True))
     op.add_column("issues", sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True))
+    op.execute("""
+        WITH release_bounds AS (
+            SELECT issue_id,
+                   (array_agg(payload->>'release' ORDER BY received_at ASC)
+                       FILTER (WHERE payload->>'release' IS NOT NULL))[1] AS first_release,
+                   (array_agg(payload->>'release' ORDER BY received_at DESC)
+                       FILTER (WHERE payload->>'release' IS NOT NULL))[1] AS last_release
+            FROM raw_events
+            WHERE issue_id IS NOT NULL
+            GROUP BY issue_id
+        )
+        UPDATE issues AS i
+        SET first_release = b.first_release,
+            last_release = b.last_release
+        FROM release_bounds AS b
+        WHERE i.id = b.issue_id
+    """)
     op.create_index(
         "ix_raw_events_project_release",
         "raw_events",
