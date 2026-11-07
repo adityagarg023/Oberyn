@@ -205,6 +205,10 @@ class Issue(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     event_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     user_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    first_release: Mapped[str | None] = mapped_column(String(200))
+    last_release: Mapped[str | None] = mapped_column(String(200))
+    resolved_in_release: Mapped[str | None] = mapped_column(String(200))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
