@@ -49,7 +49,8 @@ function parseDsn(value: string): ParsedDsn | null {
     const segments = url.pathname.split("/").filter(Boolean);
     const projectId = segments[segments.length - 1];
     const publicKey = url.username;
-    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !projectId || !publicKey) return null;
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !projectId || !publicKey)
+      return null;
     if (url.password || url.search || url.hash) return null;
     return {
       endpoint: `${url.origin}/api/${projectId}/envelope`,
@@ -91,17 +92,20 @@ function stringify(value: unknown): string {
 function stackFrames(error: unknown): StackFrameV1[] {
   return safe([], () => {
     if (!(error instanceof Error) || typeof error.stack !== "string") return [];
-    return error.stack.split("\n").slice(1, 51).map((line) => {
-      const trimmed = line.trim();
-      const match = trimmed.match(/^(?:at )?(.*?) ?\(?(.+?):(\d+):(\d+)\)?$/);
-      return {
-        function: (match?.[1] || "<anonymous>").slice(0, 4096),
-        filename: (match?.[2] || trimmed).slice(0, 4096),
-        lineno: match ? Number(match[3]) : null,
-        colno: match ? Number(match[4]) : null,
-        in_app: true,
-      };
-    });
+    return error.stack
+      .split("\n")
+      .slice(1, 51)
+      .map((line) => {
+        const trimmed = line.trim();
+        const match = trimmed.match(/^(?:at )?(.*?) ?\(?(.+?):(\d+):(\d+)\)?$/);
+        return {
+          function: (match?.[1] || "<anonymous>").slice(0, 4096),
+          filename: (match?.[2] || trimmed).slice(0, 4096),
+          lineno: match ? Number(match[3]) : null,
+          colno: match ? Number(match[4]) : null,
+          in_app: true,
+        };
+      });
   });
 }
 
@@ -114,7 +118,13 @@ function createEvent(
 ): EventV1 {
   const error = kind === "exception" && value instanceof Error ? value : null;
   const exception = {
-    type: error?.name || (kind === "message" ? "Message" : typeof value === "object" && value !== null ? "Object" : typeof value),
+    type:
+      error?.name ||
+      (kind === "message"
+        ? "Message"
+        : typeof value === "object" && value !== null
+          ? "Object"
+          : typeof value),
     value: stringify(value),
     stacktrace: stackFrames(error),
   };
@@ -149,7 +159,10 @@ export function init(options: OberynOptions): void {
     client = {
       dsn,
       options: { ...options, sampleRate },
-      transport: typeof transport === "function" ? transport : (() => Promise.reject(new Error("fetch unavailable"))) as typeof fetch,
+      transport:
+        typeof transport === "function"
+          ? transport
+          : ((() => Promise.reject(new Error("fetch unavailable"))) as typeof fetch),
     };
   });
 }
@@ -167,7 +180,8 @@ function send(
     if (
       captureOptions.fingerprint !== undefined &&
       (!customFingerprint || customFingerprint.length > 128)
-    ) return null;
+    )
+      return null;
     const event = createEvent(value, level, kind, current.options, customFingerprint);
     if (Math.random() >= (current.options.sampleRate ?? 1)) return null;
 
@@ -175,7 +189,12 @@ function send(
     if (current.options.beforeSend) {
       outgoing = safe(null, () => current.options.beforeSend!(event));
     }
-    if (!outgoing || typeof outgoing !== "object" || outgoing.schema_version !== EVENT_SCHEMA_VERSION) return null;
+    if (
+      !outgoing ||
+      typeof outgoing !== "object" ||
+      outgoing.schema_version !== EVENT_SCHEMA_VERSION
+    )
+      return null;
 
     // The SDK deliberately does not install global error/unhandled-rejection handlers.
     // Its own transport errors are swallowed here and can never be recaptured.
@@ -200,13 +219,32 @@ function send(
 }
 
 export function captureException(error: unknown, options: CaptureOptions = {}): string | null {
-  return safe(null, () => send(error, LEVELS.includes(options.level ?? "error") ? options.level ?? "error" : "error", "exception", options));
+  return safe(null, () =>
+    send(
+      error,
+      LEVELS.includes(options.level ?? "error") ? (options.level ?? "error") : "error",
+      "exception",
+      options,
+    ),
+  );
 }
 
 export function captureMessage(message: string, options: CaptureOptions = {}): string | null {
-  return safe(null, () => send(message, LEVELS.includes(options.level ?? "info") ? options.level ?? "info" : "info", "message", options));
+  return safe(null, () =>
+    send(
+      message,
+      LEVELS.includes(options.level ?? "info") ? (options.level ?? "info") : "info",
+      "message",
+      options,
+    ),
+  );
 }
-export { addBreadcrumb, clearBreadcrumbs, configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
+export {
+  addBreadcrumb,
+  clearBreadcrumbs,
+  configureBreadcrumbs,
+  getBreadcrumbs,
+} from "./breadcrumbs.js";
 export type { BreadcrumbInput, BreadcrumbOptions } from "./breadcrumbs.js";
 export { Transport } from "./transport.js";
 export type { TransportOptions } from "./transport.js";

@@ -16,7 +16,11 @@ export interface ReactRuntime {
     render(): unknown;
     componentDidCatch?(error: Error, info: ReactErrorInfo): void;
   };
-  createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): unknown;
+  createElement(
+    type: unknown,
+    props: Record<string, unknown> | null,
+    ...children: unknown[]
+  ): unknown;
 }
 
 /** Dependency-injected to keep React out of the core SDK's dependency graph. */
@@ -31,9 +35,16 @@ export function createErrorBoundary(React: ReactRuntime, fallback: unknown = nul
 
       componentDidCatch(error: Error, info: ReactErrorInfo): void {
         try {
-          if (info?.componentStack) addBreadcrumb({ type: "error", category: "react", message: info.componentStack.slice(0, 500) });
+          if (info?.componentStack)
+            addBreadcrumb({
+              type: "error",
+              category: "react",
+              message: info.componentStack.slice(0, 500),
+            });
           captureException(error, { level: "error" });
-        } catch { /* Never let monitoring break React's error recovery. */ }
+        } catch {
+          /* Never let monitoring break React's error recovery. */
+        }
       }
 
       render(): unknown {

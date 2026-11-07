@@ -40,8 +40,12 @@ describe("Oberyn SDK", () => {
     expect((request.headers as Record<string, string>)["x-oberyn-key"]).toBe("public-key");
     const event = JSON.parse(request.body as string);
     expect(event).toMatchObject({
-      schema_version: 1, event_id: id, platform: "javascript",
-      level: "warning", release: "1.2.3", environment: "test",
+      schema_version: 1,
+      event_id: id,
+      platform: "javascript",
+      level: "warning",
+      release: "1.2.3",
+      environment: "test",
       exception: { type: "Message", value: "hello", stacktrace: [] },
     });
     expect(Number.isNaN(Date.parse(event.timestamp))).toBe(false);
@@ -73,7 +77,9 @@ describe("Oberyn SDK", () => {
     init({ dsn, fetch: transport });
     captureMessage("x", { level: "fatal" });
     captureMessage("y", { level: "invalid" as never });
-    const levels = transport.mock.calls.map((call) => JSON.parse((call[1] as RequestInit).body as string).level);
+    const levels = transport.mock.calls.map(
+      (call) => JSON.parse((call[1] as RequestInit).body as string).level,
+    );
     expect(levels).toEqual(["fatal", "info"]);
   });
 
@@ -103,14 +109,22 @@ describe("Oberyn SDK", () => {
 
   it("contains exceptions thrown by beforeSend", () => {
     const transport = vi.fn();
-    init({ dsn, fetch: transport, beforeSend: () => { throw new Error("hook failed"); } });
+    init({
+      dsn,
+      fetch: transport,
+      beforeSend: () => {
+        throw new Error("hook failed");
+      },
+    });
     expect(() => captureMessage("safe")).not.toThrow();
     expect(captureMessage("safe")).toBeNull();
     expect(transport).not.toHaveBeenCalled();
   });
 
   it("contains synchronous and asynchronous network failures", async () => {
-    const syncFetch = vi.fn(() => { throw new Error("offline"); });
+    const syncFetch = vi.fn(() => {
+      throw new Error("offline");
+    });
     init({ dsn, fetch: syncFetch });
     expect(() => captureException(new Error("app error"))).not.toThrow();
 
@@ -139,7 +153,6 @@ describe("Oberyn SDK", () => {
     expect(() => captureException(cyclic)).not.toThrow();
     expect(transport).toHaveBeenCalledOnce();
   });
-
 
   it("includes a custom fingerprint when capturing an event", () => {
     const transport = vi.fn().mockResolvedValue({});

@@ -2,6 +2,7 @@
 
 Revision ID: 0006_issue_release_metadata
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -12,10 +13,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("issues", sa.Column("first_release", sa.String(length=200), nullable=True))
-    op.add_column("issues", sa.Column("last_release", sa.String(length=200), nullable=True))
-    op.add_column("issues", sa.Column("resolved_in_release", sa.String(length=200), nullable=True))
-    op.add_column("issues", sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "issues", sa.Column("first_release", sa.String(length=200), nullable=True)
+    )
+    op.add_column(
+        "issues", sa.Column("last_release", sa.String(length=200), nullable=True)
+    )
+    op.add_column(
+        "issues", sa.Column("resolved_in_release", sa.String(length=200), nullable=True)
+    )
+    op.add_column(
+        "issues", sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True)
+    )
     op.execute("""
         WITH release_bounds AS (
             SELECT issue_id,

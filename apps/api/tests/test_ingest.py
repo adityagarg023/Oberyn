@@ -96,7 +96,9 @@ class FakePool:
         event_id: UUID,
         payload_json: str,
     ) -> UUID | None:
-        raise AssertionError("raw event persistence must use the atomic issue-upsert statement")
+        raise AssertionError(
+            "raw event persistence must use the atomic issue-upsert statement"
+        )
 
 
 @pytest.fixture
@@ -144,7 +146,9 @@ def test_valid_event_is_accepted_and_stored(
     client, pool = api_client
     payload = valid_event()
 
-    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
+    response = client.post(
+        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload
+    )
 
     assert response.status_code == 202
     assert response.json() == {
@@ -165,7 +169,9 @@ def test_invalid_event_payload_returns_422(
     payload = valid_event()
     payload["level"] = "critical"
 
-    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
+    response = client.post(
+        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload
+    )
 
     assert response.status_code == 422
 

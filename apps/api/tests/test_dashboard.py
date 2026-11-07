@@ -163,12 +163,16 @@ async def test_admin_can_transition_issue_status(new_status: str) -> None:
     assert result["issue"]["status"] == new_status
     update_query = fake.fetchrow.await_args_list[1].args[0]
     assert "resolved_at=CASE WHEN $4='resolved' THEN now()" in update_query
-    assert "resolved_in_release=CASE WHEN $4='resolved' THEN last_release" in update_query
+    assert (
+        "resolved_in_release=CASE WHEN $4='resolved' THEN last_release" in update_query
+    )
 
 
 @pytest.mark.asyncio
 async def test_member_cannot_change_issue_status() -> None:
-    fake = SimpleNamespace(fetchrow=AsyncMock(return_value={"id": UUID(int=1), "role": "member"}))
+    fake = SimpleNamespace(
+        fetchrow=AsyncMock(return_value={"id": UUID(int=1), "role": "member"})
+    )
     with pytest.raises(HTTPException) as error:
         await update_issue_status(
             UUID(int=1),
@@ -244,13 +248,20 @@ async def test_admin_can_merge_issues_and_move_event_references() -> None:
     assert result["issue"]["id"] == target_id
     assert result["merged_issue_id"] == str(source_id)
     assert connection.execute.await_count == 4
-    assert "UPDATE raw_events SET issue_id=$1" in connection.execute.await_args_list[0].args[0]
-    assert "UPDATE events SET issue_id=$1" in connection.execute.await_args_list[1].args[0]
+    assert (
+        "UPDATE raw_events SET issue_id=$1"
+        in connection.execute.await_args_list[0].args[0]
+    )
+    assert (
+        "UPDATE events SET issue_id=$1" in connection.execute.await_args_list[1].args[0]
+    )
 
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_merge_issues() -> None:
-    fake = SimpleNamespace(fetchrow=AsyncMock(return_value={"id": UUID(int=5), "role": "member"}))
+    fake = SimpleNamespace(
+        fetchrow=AsyncMock(return_value={"id": UUID(int=5), "role": "member"})
+    )
     with pytest.raises(HTTPException) as error:
         await merge_issues(
             UUID(int=1),

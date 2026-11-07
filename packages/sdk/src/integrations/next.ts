@@ -59,7 +59,11 @@ export function instrumentNextRouter<T extends NextRouterLike>(router: T): () =>
 /** Call from a Next.js route-change observer when using the App Router. */
 export function recordNextRoute(pathname: string): void {
   try {
-    addBreadcrumb({ type: "navigation", category: "navigation", data: { framework: "nextjs", to: pathname } });
+    addBreadcrumb({
+      type: "navigation",
+      category: "navigation",
+      data: { framework: "nextjs", to: pathname },
+    });
   } catch {
     /* no-op */
   }

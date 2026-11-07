@@ -35,7 +35,10 @@ class RingBuffer<T> {
 
   toArray(): T[] {
     const start = (this.next - this.count + this.capacity) % this.capacity;
-    return Array.from({ length: this.count }, (_, index) => this.values[(start + index) % this.capacity] as T);
+    return Array.from(
+      { length: this.count },
+      (_, index) => this.values[(start + index) % this.capacity] as T,
+    );
   }
 
   clear(): void {
@@ -53,7 +56,8 @@ function sanitize(value: unknown, depth = 0): JsonValue {
   if (typeof value === "object") {
     const result: Record<string, JsonValue> = {};
     for (const [key, child] of Object.entries(value).slice(0, 30)) {
-      if (!SENSITIVE_KEY.test(key)) result[scrubString(key).slice(0, 100)] = sanitize(child, depth + 1);
+      if (!SENSITIVE_KEY.test(key))
+        result[scrubString(key).slice(0, 100)] = sanitize(child, depth + 1);
     }
     return result;
   }
@@ -66,7 +70,9 @@ let options: BreadcrumbOptions = {};
 export function configureBreadcrumbs(next: BreadcrumbOptions = {}): void {
   try {
     const requested = next.maxBreadcrumbs ?? DEFAULT_BREADCRUMB_LIMIT;
-    const capacity = Number.isFinite(requested) ? Math.max(1, Math.min(100, Math.floor(requested))) : DEFAULT_BREADCRUMB_LIMIT;
+    const capacity = Number.isFinite(requested)
+      ? Math.max(1, Math.min(100, Math.floor(requested)))
+      : DEFAULT_BREADCRUMB_LIMIT;
     const existing = buffer.toArray().slice(-capacity);
     buffer = new RingBuffer<BreadcrumbV1>(capacity);
     existing.forEach((item) => buffer.push(item));

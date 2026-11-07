@@ -64,14 +64,25 @@ function isRetryable(status: number): boolean {
 }
 
 export class Transport {
-  private readonly options: Required<Pick<TransportOptions,
-    "batchSize" | "flushIntervalMs" | "maxBufferSize" | "maxRetries" |
-    "baseRetryDelayMs" | "maxRetryDelayMs">> & TransportOptions;
+  private readonly options: Required<
+    Pick<
+      TransportOptions,
+      | "batchSize"
+      | "flushIntervalMs"
+      | "maxBufferSize"
+      | "maxRetries"
+      | "baseRetryDelayMs"
+      | "maxRetryDelayMs"
+    >
+  > &
+    TransportOptions;
   private readonly queue: QueuedEvent[] = [];
   private readonly fetcher: FetchLike | undefined;
   private readonly beacon: BeaconLike | undefined;
   private readonly eventTarget: EventTargetLike | undefined;
-  private readonly unloadHandler = (): void => { this.flushOnUnload(); };
+  private readonly unloadHandler = (): void => {
+    this.flushOnUnload();
+  };
   private interval: ReturnType<typeof setInterval> | undefined;
   private inFlight: Promise<void> | undefined;
   private closed = false;
@@ -84,16 +95,20 @@ export class Transport {
       addEventListener?: EventTargetLike["addEventListener"];
       removeEventListener?: EventTargetLike["removeEventListener"];
     };
-    this.fetcher = options.fetch === null ? undefined : options.fetch ?? runtime.fetch;
+    this.fetcher = options.fetch === null ? undefined : (options.fetch ?? runtime.fetch);
     this.beacon = options.sendBeacon ?? runtime.navigator?.sendBeacon?.bind(runtime.navigator);
-    this.eventTarget = options.eventTarget ?? (
-      runtime.addEventListener ? {
-        addEventListener: runtime.addEventListener.bind(globalThis),
-        removeEventListener: runtime.removeEventListener?.bind(globalThis),
-      } : undefined
-    );
+    this.eventTarget =
+      options.eventTarget ??
+      (runtime.addEventListener
+        ? {
+            addEventListener: runtime.addEventListener.bind(globalThis),
+            removeEventListener: runtime.removeEventListener?.bind(globalThis),
+          }
+        : undefined);
 
-    this.interval = setInterval(() => { void this.flush(); }, this.options.flushIntervalMs);
+    this.interval = setInterval(() => {
+      void this.flush();
+    }, this.options.flushIntervalMs);
     this.eventTarget?.addEventListener("pagehide", this.unloadHandler);
     this.eventTarget?.addEventListener("beforeunload", this.unloadHandler);
   }
@@ -113,17 +128,19 @@ export class Transport {
   flush(): Promise<void> {
     if (this.closed && this.queue.length === 0) return Promise.resolve();
     if (this.inFlight) return this.inFlight;
-    const operation = this.flushReadyEvents().catch(() => {
-      // Transport failures must never escape into the host application.
-    }).finally(() => {
-      this.inFlight = undefined;
-    });
+    const operation = this.flushReadyEvents()
+      .catch(() => {
+        // Transport failures must never escape into the host application.
+      })
+      .finally(() => {
+        this.inFlight = undefined;
+      });
     this.inFlight = operation;
     return operation;
   }
 
   private async flushReadyEvents(): Promise<void> {
-    if (!this.fetcher || this.closed && this.queue.length === 0) return;
+    if (!this.fetcher || (this.closed && this.queue.length === 0)) return;
     while (true) {
       const now = Date.now();
       const batch: QueuedEvent[] = [];
@@ -181,11 +198,13 @@ export class Transport {
           headers: { "Content-Type": "application/json", ...this.options.headers },
           body,
           keepalive: true,
-        }).then((response) => {
-          if (response.ok) this.queue.splice(0, batch.length);
-        }).catch(() => {
-          // The page is unloading; retain the in-memory queue only.
-        });
+        })
+          .then((response) => {
+            if (response.ok) this.queue.splice(0, batch.length);
+          })
+          .catch(() => {
+            // The page is unloading; retain the in-memory queue only.
+          });
       }
     } catch {
       // Unload handling is best effort and must not affect the host page.

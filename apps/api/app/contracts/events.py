@@ -90,9 +90,13 @@ class EventV1(StrictModel):
         limits = limits or EventLimits()
 
         if len(self.exception.stacktrace) > limits.max_stack_depth:
-            raise ValueError(f"stacktrace exceeds maximum depth of {limits.max_stack_depth}")
+            raise ValueError(
+                f"stacktrace exceeds maximum depth of {limits.max_stack_depth}"
+            )
         if len(self.breadcrumbs) > limits.max_breadcrumbs:
-            raise ValueError(f"breadcrumbs exceed maximum count of {limits.max_breadcrumbs}")
+            raise ValueError(
+                f"breadcrumbs exceed maximum count of {limits.max_breadcrumbs}"
+            )
 
         def check(value: Any, path: str) -> None:
             if isinstance(value, str) and len(value) > limits.max_string_length:
@@ -111,8 +115,12 @@ class EventV1(StrictModel):
         return self
 
 
-def validate_event_payload(payload: bytes, limits: EventLimits | None = None) -> EventV1:
+def validate_event_payload(
+    payload: bytes, limits: EventLimits | None = None
+) -> EventV1:
     configured = limits or EventLimits()
     if len(payload) > configured.max_payload_bytes:
-        raise ValueError(f"payload exceeds maximum size of {configured.max_payload_bytes} bytes")
+        raise ValueError(
+            f"payload exceeds maximum size of {configured.max_payload_bytes} bytes"
+        )
     return EventV1.model_validate_json(payload, context={"limits": configured})

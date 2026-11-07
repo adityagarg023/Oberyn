@@ -1,9 +1,12 @@
 import type { EventV1, JsonValue } from "../../contracts/src/events.js";
 
-const SENSITIVE_KEY = /(?:password|passwd|pwd|token|secret|authorization|cookie|api[-_]?key|access[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?(?:number|no|cvv|cvc|expiry)|\bcvv\b|\bcvc\b|\bpan\b)/i;
+const SENSITIVE_KEY =
+  /(?:password|passwd|pwd|token|secret|authorization|cookie|api[-_]?key|access[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?(?:number|no|cvv|cvc|expiry)|\bcvv\b|\bcvc\b|\bpan\b)/i;
 const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi;
-const ASSIGNMENT = /\b(password|passwd|token|access_token|refresh_token|api_key|authorization|client_secret)\s*([=:])\s*([^\s&,;]+)/gi;
-const URL_PARAM = /([?&](?:password|token|access_token|refresh_token|api_key|authorization|secret)=)[^&#\s]*/gi;
+const ASSIGNMENT =
+  /\b(password|passwd|token|access_token|refresh_token|api_key|authorization|client_secret)\s*([=:])\s*([^\s&,;]+)/gi;
+const URL_PARAM =
+  /([?&](?:password|token|access_token|refresh_token|api_key|authorization|secret)=)[^&#\s]*/gi;
 const CARD_CANDIDATE = /\b(?:\d[ -]*?){13,19}\b/g;
 
 function passesLuhn(value: string): boolean {
@@ -28,7 +31,9 @@ export function scrubString(value: string): string {
     .replace(BEARER, "$1 [REDACTED]")
     .replace(ASSIGNMENT, "$1$2[REDACTED]")
     .replace(URL_PARAM, "$1[REDACTED]")
-    .replace(CARD_CANDIDATE, (candidate) => passesLuhn(candidate) ? "[REDACTED_CARD]" : candidate);
+    .replace(CARD_CANDIDATE, (candidate) =>
+      passesLuhn(candidate) ? "[REDACTED_CARD]" : candidate,
+    );
 }
 
 function scrubValue(value: unknown, depth = 0): JsonValue {
@@ -41,9 +46,10 @@ function scrubValue(value: unknown, depth = 0): JsonValue {
     for (const [key, child] of Object.entries(value)) {
       // Request bodies are opaque application payloads and may contain arbitrary PII.
       // Redact them entirely rather than relying on field-name detection.
-      result[scrubString(key)] = key.toLowerCase() === "body" || SENSITIVE_KEY.test(key)
-        ? "[REDACTED]"
-        : scrubValue(child, depth + 1);
+      result[scrubString(key)] =
+        key.toLowerCase() === "body" || SENSITIVE_KEY.test(key)
+          ? "[REDACTED]"
+          : scrubValue(child, depth + 1);
     }
     return result;
   }

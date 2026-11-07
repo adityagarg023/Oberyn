@@ -17,7 +17,9 @@ def valid_payload() -> dict[str, Any]:
     )
 
 
-def validate_dict(payload: dict[str, Any], limits: EventLimits | None = None) -> EventV1:
+def validate_dict(
+    payload: dict[str, Any], limits: EventLimits | None = None
+) -> EventV1:
     return EventV1.model_validate_json(
         json.dumps(payload),
         context={"limits": limits or EventLimits()},
@@ -31,7 +33,9 @@ def test_shared_valid_fixture_matches_server_contract() -> None:
     assert len(event.exception.stacktrace) == 1
 
 
-@pytest.mark.parametrize("case", json.loads((FIXTURES / "event-v1.invalid.json").read_text()))
+@pytest.mark.parametrize(
+    "case", json.loads((FIXTURES / "event-v1.invalid.json").read_text())
+)
 def test_shared_invalid_fixtures_are_rejected(case: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         validate_dict(case["payload"])

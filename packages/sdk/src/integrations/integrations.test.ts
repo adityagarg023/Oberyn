@@ -30,14 +30,20 @@ describe("framework integrations", () => {
     init({ dsn, fetch: fetchMock });
     const next = vi.fn();
     const error = new Error("route failed");
-    expect(() => oberynExpressErrorHandler({ method: "GET", url: "/private?token=secret" }, {}, error, next)).not.toThrow();
+    expect(() =>
+      oberynExpressErrorHandler({ method: "GET", url: "/private?token=secret" }, {}, error, next),
+    ).not.toThrow();
     expect(next).toHaveBeenCalledWith(error);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("records Express request path without query strings", () => {
     const next = vi.fn();
-    oberynExpressRequestMiddleware({ method: "POST", originalUrl: "/login?token=secret" }, {}, next);
+    oberynExpressRequestMiddleware(
+      { method: "POST", originalUrl: "/login?token=secret" },
+      {},
+      next,
+    );
     expect(next).toHaveBeenCalledOnce();
     expect(getBreadcrumbs()[0]?.data).toMatchObject({ url: "/login", method: "POST" });
   });
@@ -46,9 +52,15 @@ describe("framework integrations", () => {
     class Component {
       props: Record<string, unknown>;
       state: Record<string, unknown> = {};
-      constructor(props: Record<string, unknown>) { this.props = props; }
-      setState(state: Partial<Record<string, unknown>>): void { this.state = { ...this.state, ...state }; }
-      render(): unknown { return null; }
+      constructor(props: Record<string, unknown>) {
+        this.props = props;
+      }
+      setState(state: Partial<Record<string, unknown>>): void {
+        this.state = { ...this.state, ...state };
+      }
+      render(): unknown {
+        return null;
+      }
     }
     const React = { Component, createElement: vi.fn() };
     expect(createErrorBoundary(React, "fallback")).toBeTypeOf("function");
@@ -64,10 +76,15 @@ describe("framework integrations", () => {
   it("captures browser clicks and history navigation", () => {
     let clickListener: ((event: unknown) => void) | undefined;
     const documentMock = {
-      addEventListener: vi.fn((_name: string, listener: (event: unknown) => void) => { clickListener = listener; }),
+      addEventListener: vi.fn((_name: string, listener: (event: unknown) => void) => {
+        clickListener = listener;
+      }),
       removeEventListener: vi.fn(),
     };
-    const historyMock = { pushState: vi.fn((_state: unknown, _title: string, href: string) => href), replaceState: vi.fn() };
+    const historyMock = {
+      pushState: vi.fn((_state: unknown, _title: string, href: string) => href),
+      replaceState: vi.fn(),
+    };
     vi.stubGlobal("document", documentMock);
     vi.stubGlobal("history", historyMock);
     const stop = instrumentBrowser({ fetch: false, xhr: false, console: false });
@@ -91,7 +108,12 @@ describe("framework integrations", () => {
   it("wraps browser fetch and restores it during cleanup", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ status: 204 });
     vi.stubGlobal("fetch", fetchMock);
-    const stop = instrumentBrowser({ clicks: false, navigation: false, xhr: false, console: false });
+    const stop = instrumentBrowser({
+      clicks: false,
+      navigation: false,
+      xhr: false,
+      console: false,
+    });
     await (globalThis.fetch as unknown as (url: string) => Promise<unknown>)("/api/profile");
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(getBreadcrumbs().some((crumb) => crumb.category === "fetch")).toBe(true);

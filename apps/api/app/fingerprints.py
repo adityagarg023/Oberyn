@@ -8,7 +8,9 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.contracts.events import EventV1
 
-_UUID_RE = re.compile(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
+_UUID_RE = re.compile(
+    r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+)
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>'\"\\)]+")
 _NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])")
 _SPACE_RE = re.compile(r"\s+")
@@ -18,7 +20,9 @@ def _normalize_filename(value: str) -> str:
     value = value.strip().split("#", 1)[0].split("?", 1)[0]
     if value.startswith(("http://", "https://")):
         parts = urlsplit(value)
-        return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, "", ""))
+        return urlunsplit(
+            (parts.scheme.lower(), parts.netloc.lower(), parts.path, "", "")
+        )
     return value
 
 
@@ -58,5 +62,7 @@ def generate_fingerprint(event: EventV1, top_n: int = 5) -> str:
         if pairs:
             canonical = "trace\0" + kind + "\0" + "\n".join(pairs)
         else:
-            canonical = "message\0" + kind + "\0" + _normalize_message(event.exception.value)
+            canonical = (
+                "message\0" + kind + "\0" + _normalize_message(event.exception.value)
+            )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

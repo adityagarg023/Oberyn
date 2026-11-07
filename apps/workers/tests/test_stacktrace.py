@@ -62,10 +62,18 @@ def test_external_frames_are_fallback_when_no_in_app_frame_exists() -> None:
 
 
 def test_structured_frames_are_normalized_and_invalid_entries_skipped() -> None:
-    frames = normalize_frames([
-        {"filename": "https://app.test/a.js?x=1#hash", "function": " async render  ", "lineno": 3, "colno": 4, "in_app": True},
-        {"filename": 42, "function": "broken"},
-    ])
+    frames = normalize_frames(
+        [
+            {
+                "filename": "https://app.test/a.js?x=1#hash",
+                "function": " async render  ",
+                "lineno": 3,
+                "colno": 4,
+                "in_app": True,
+            },
+            {"filename": 42, "function": "broken"},
+        ]
+    )
     assert frames == [StackFrame("https://app.test/a.js", "render", 3, 4, True)]
 
 
@@ -87,7 +95,9 @@ def test_fingerprint_is_independent_of_line_and_column(
     query=st.text(alphabet=st.characters(blacklist_characters="#"), max_size=30),
     fragment=st.text(max_size=30),
 )
-def test_filename_normalization_removes_query_and_fragment(query: str, fragment: str) -> None:
+def test_filename_normalization_removes_query_and_fragment(
+    query: str, fragment: str
+) -> None:
     result = normalize_filename(f"https://example.test/app.js?{query}#{fragment}")
     assert result == "https://example.test/app.js"
 

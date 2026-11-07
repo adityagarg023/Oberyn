@@ -18,13 +18,15 @@
       "exception": {
         "type": "TypeError",
         "value": "bad",
-        "stacktrace": [{
-          "filename": "app.js",
-          "function": "run",
-          "lineno": 1,
-          "colno": 1,
-          "in_app": "yes"
-        }]
+        "stacktrace": [
+          {
+            "filename": "app.js",
+            "function": "run",
+            "lineno": 1,
+            "colno": 1,
+            "in_app": "yes"
+          }
+        ]
       }
     }
   }

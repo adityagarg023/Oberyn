@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { addBreadcrumb, clearBreadcrumbs } from "./breadcrumbs.js";
 import { captureMessage, init } from "./index.js";
 
-afterEach(() => { clearBreadcrumbs(); vi.restoreAllMocks(); });
+afterEach(() => {
+  clearBreadcrumbs();
+  vi.restoreAllMocks();
+});
 
 describe("event breadcrumb attachment", () => {
   it("attaches the most recent breadcrumbs to captured events", () => {
@@ -12,6 +15,9 @@ describe("event breadcrumb attachment", () => {
     addBreadcrumb({ category: "checkout", message: "started" });
     captureMessage("checkout failed");
     const payload = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string);
-    expect(payload.breadcrumbs.map((crumb: { message: string }) => crumb.message)).toEqual(["before init", "started"]);
+    expect(payload.breadcrumbs.map((crumb: { message: string }) => crumb.message)).toEqual([
+      "before init",
+      "started",
+    ]);
   });
 });

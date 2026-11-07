@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addBreadcrumb, clearBreadcrumbs, configureBreadcrumbs, getBreadcrumbs } from "./breadcrumbs.js";
+import {
+  addBreadcrumb,
+  clearBreadcrumbs,
+  configureBreadcrumbs,
+  getBreadcrumbs,
+} from "./breadcrumbs.js";
 
 afterEach(() => {
   clearBreadcrumbs();
@@ -24,7 +29,7 @@ describe("breadcrumb ring buffer", () => {
   it("supports category filtering and beforeBreadcrumb drops", () => {
     configureBreadcrumbs({
       ignoreCategories: ["console.debug"],
-      beforeBreadcrumb: (crumb) => crumb.message === "drop" ? null : crumb,
+      beforeBreadcrumb: (crumb) => (crumb.message === "drop" ? null : crumb),
     });
     addBreadcrumb({ category: "console.debug", message: "ignored" });
     addBreadcrumb({ message: "drop" });
@@ -33,13 +38,20 @@ describe("breadcrumb ring buffer", () => {
   });
 
   it("redacts sensitive data before storing a breadcrumb", () => {
-    addBreadcrumb({ category: "request", data: { authorization: "Bearer secret", route: "/users?token=abc" } });
+    addBreadcrumb({
+      category: "request",
+      data: { authorization: "Bearer secret", route: "/users?token=abc" },
+    });
     const [crumb] = getBreadcrumbs();
     expect(crumb?.data).toEqual({ route: "/users?token=[REDACTED]" });
   });
 
   it("contains exceptions thrown by custom filters", () => {
-    configureBreadcrumbs({ beforeBreadcrumb: () => { throw new Error("filter failed"); } });
+    configureBreadcrumbs({
+      beforeBreadcrumb: () => {
+        throw new Error("filter failed");
+      },
+    });
     expect(() => addBreadcrumb({ message: "safe" })).not.toThrow();
     expect(getBreadcrumbs()).toHaveLength(0);
   });

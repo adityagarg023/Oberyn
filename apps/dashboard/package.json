@@ -1,1 +1,30 @@
-{"name":"@oberyn/dashboard","version":"0.1.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"eslint","typecheck":"next typegen && tsc --noEmit"},"dependencies":{"@clerk/nextjs":"^6.36.0","@tanstack/react-query":"^5.90.0","lucide-react":"^0.552.0","next":"16.4.5","react":"19.3.0","react-dom":"19.3.0","recharts":"^3.3.0"},"devDependencies":{"@tailwindcss/turbopack":"^4","@types/react":"^19","@types/react-dom":"^19","babel-plugin-react-compiler":"1.0.0","eslint":"^9","eslint-config-next":"16.4.5","tailwindcss":"^4"}}
+{
+  "name": "@oberyn/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.36.0",
+    "@tanstack/react-query": "^5.90.0",
+    "lucide-react": "^0.552.0",
+    "next": "16.4.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.5",
+    "tailwindcss": "^4"
+  }
+}

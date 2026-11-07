@@ -13,8 +13,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE IF NOT EXISTS raw_events (
             project_id uuid NOT NULL,
             organization_id uuid NOT NULL,
@@ -29,14 +28,11 @@ def upgrade() -> None:
                 REFERENCES projects(id, organization_id)
                 ON DELETE CASCADE
         )
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         CREATE INDEX IF NOT EXISTS ix_raw_events_received_at
         ON raw_events (received_at)
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

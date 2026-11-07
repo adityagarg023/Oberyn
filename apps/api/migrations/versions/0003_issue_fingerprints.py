@@ -3,6 +3,7 @@
 Revision ID: 0003_issue_fingerprints
 Revises: 0002_raw_event_ingestion, 0002_raw_events
 """
+
 import sqlalchemy as sa
 from alembic import op
 

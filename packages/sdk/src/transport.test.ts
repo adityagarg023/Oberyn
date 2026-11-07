@@ -40,12 +40,16 @@ describe("SDK transport", () => {
 
   it("retries network failures with exponential backoff", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn<MockFetch>()
+    const fetch = vi
+      .fn<MockFetch>()
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValue(response());
     const transport = new Transport({
-      endpoint: "/ingest", batchSize: 1, flushIntervalMs: 60_000,
-      baseRetryDelayMs: 100, fetch,
+      endpoint: "/ingest",
+      batchSize: 1,
+      flushIntervalMs: 60_000,
+      baseRetryDelayMs: 100,
+      fetch,
     });
     transport.capture(event(3));
     await transport.flush();
@@ -59,12 +63,16 @@ describe("SDK transport", () => {
 
   it("honors Retry-After before retrying a rate-limited batch", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn<MockFetch>()
+    const fetch = vi
+      .fn<MockFetch>()
       .mockResolvedValueOnce(response(429, "2"))
       .mockResolvedValue(response());
     const transport = new Transport({
-      endpoint: "/ingest", batchSize: 1, flushIntervalMs: 60_000,
-      baseRetryDelayMs: 10, fetch,
+      endpoint: "/ingest",
+      batchSize: 1,
+      flushIntervalMs: 60_000,
+      baseRetryDelayMs: 10,
+      fetch,
     });
     transport.capture(event(4));
     await transport.flush();
@@ -81,8 +89,12 @@ describe("SDK transport", () => {
     vi.useFakeTimers();
     const fetch = vi.fn<MockFetch>().mockRejectedValue(new Error("offline"));
     const transport = new Transport({
-      endpoint: "/ingest", batchSize: 1, flushIntervalMs: 60_000,
-      maxRetries: 2, baseRetryDelayMs: 10, fetch,
+      endpoint: "/ingest",
+      batchSize: 1,
+      flushIntervalMs: 60_000,
+      maxRetries: 2,
+      baseRetryDelayMs: 10,
+      fetch,
     });
     transport.capture(event(5));
     await transport.flush();
@@ -108,7 +120,11 @@ describe("SDK transport", () => {
     const beacon = vi.fn(() => true);
     const fetch = vi.fn<MockFetch>(async () => response());
     const transport = new Transport({
-      endpoint: "/ingest", batchSize: 10, fetch, sendBeacon: beacon, eventTarget: target,
+      endpoint: "/ingest",
+      batchSize: 10,
+      fetch,
+      sendBeacon: beacon,
+      eventTarget: target,
     });
     transport.capture(event(6));
     pagehide?.();
@@ -120,11 +136,19 @@ describe("SDK transport", () => {
 
   it("falls back to fetch keepalive when sendBeacon declines the payload", async () => {
     let pagehide: (() => void) | undefined;
-    const target = { addEventListener: (_: string, listener: () => void) => { pagehide = listener; } };
+    const target = {
+      addEventListener: (_: string, listener: () => void) => {
+        pagehide = listener;
+      },
+    };
     const beacon = vi.fn(() => false);
     const fetch = vi.fn<MockFetch>(async () => response());
     const transport = new Transport({
-      endpoint: "/ingest", batchSize: 10, fetch, sendBeacon: beacon, eventTarget: target,
+      endpoint: "/ingest",
+      batchSize: 10,
+      fetch,
+      sendBeacon: beacon,
+      eventTarget: target,
     });
     transport.capture(event(7));
     pagehide?.();
@@ -134,7 +158,9 @@ describe("SDK transport", () => {
 
   it("caps the offline buffer by dropping the oldest event", async () => {
     const transport = new Transport({
-      endpoint: "/ingest", maxBufferSize: 2, batchSize: 10,
+      endpoint: "/ingest",
+      maxBufferSize: 2,
+      batchSize: 10,
       fetch: vi.fn<MockFetch>(async () => response()),
     });
     transport.capture(event(8));
