@@ -33,6 +33,12 @@ def upgrade() -> None:
         FROM release_bounds AS b
         WHERE i.id = b.issue_id
     """)
+    op.execute("""
+        UPDATE issues
+        SET resolved_in_release = last_release,
+            resolved_at = last_seen
+        WHERE status = 'resolved'
+    """)
     op.create_index(
         "ix_raw_events_project_release",
         "raw_events",
