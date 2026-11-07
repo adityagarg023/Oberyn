@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";\nimport type { EventV1 } from "../../contracts/src/events.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EventV1 } from "../../contracts/src/events.js";
 import { captureException, captureMessage, generateEventId, init } from "./index";
 
 const dsn = "https://public-key@ingest.oberyn.dev/42";
@@ -121,7 +122,8 @@ describe("Oberyn SDK", () => {
   });
 
   it("does not install global error handlers or recapture its own transport failures", () => {
-    const add = vi.spyOn(globalThis, "addEventListener");
+    const add = vi.fn();
+    vi.stubGlobal("addEventListener", add);
     const transport = vi.fn().mockRejectedValue(new Error("network"));
     init({ dsn, fetch: transport });
     captureMessage("first");

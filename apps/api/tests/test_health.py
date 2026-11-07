@@ -1,8 +1,11 @@
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.config import Settings, load_settings
 from app.main import create_app, get_database_engine, get_redis_client
 
@@ -77,7 +80,7 @@ def test_readiness_reports_database_unavailable() -> None:
 def test_readiness_reports_redis_unavailable() -> None:
     settings = Settings(database_url="postgresql://localhost/test")
     app = create_app(settings)
-    
+
     app.dependency_overrides[get_database_engine] = lambda: FakeEngine()
     app.dependency_overrides[get_redis_client] = lambda: FailedRedis()
 
@@ -89,33 +92,38 @@ def test_readiness_reports_redis_unavailable() -> None:
 
 
 class FakeRedis:
-    async def ping(self):
+    async def ping(self) -> bool:
         return True
 
 
 class FailedRedis:
-    async def ping(self):
+    async def ping(self) -> bool:
         raise RedisError("Connection failed")
 
 
 class FakeConnection:
-    async def execute(self, statement):
+    async def execute(self, statement: Any) -> None:
         return None
 
 
 class FakeConnectionContext:
-    async def __aenter__(self):
+    async def __aenter__(self) -> FakeConnection:
         return FakeConnection()
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self,
+        exc_type: Any,
+        exc: Any,
+        traceback: Any,
+    ) -> bool:
         return False
 
 
 class FakeEngine:
-    def connect(self):
+    def connect(self) -> FakeConnectionContext:
         return FakeConnectionContext()
 
 
 class FailedEngine:
-    def connect(self):
+    def connect(self) -> FakeConnectionContext:
         raise SQLAlchemyError("Connection failed")

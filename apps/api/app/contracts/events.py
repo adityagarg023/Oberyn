@@ -4,7 +4,14 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class EventLimits(BaseModel):
@@ -89,7 +96,9 @@ class EventV1(StrictModel):
 
         def check(value: Any, path: str) -> None:
             if isinstance(value, str) and len(value) > limits.max_string_length:
-                raise ValueError(f"{path} exceeds maximum string length of {limits.max_string_length}")
+                raise ValueError(
+                    f"{path} exceeds maximum string length of{{limits.max_string_length}}"
+                )
             if isinstance(value, dict):
                 for key, child in value.items():
                     check(str(key), f"{path} key")

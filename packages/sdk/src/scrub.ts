@@ -39,7 +39,9 @@ function scrubValue(value: unknown, depth = 0): JsonValue {
   if (typeof value === "object") {
     const result: Record<string, JsonValue> = {};
     for (const [key, child] of Object.entries(value)) {
-      result[scrubString(key)] = SENSITIVE_KEY.test(key)
+      // Request bodies are opaque application payloads and may contain arbitrary PII.
+      // Redact them entirely rather than relying on field-name detection.
+      result[scrubString(key)] = key.toLowerCase() === "body" || SENSITIVE_KEY.test(key)
         ? "[REDACTED]"
         : scrubValue(child, depth + 1);
     }
@@ -50,5 +52,5 @@ function scrubValue(value: unknown, depth = 0): JsonValue {
 
 /** Return a scrubbed copy; the caller's event is never mutated. */
 export function scrubEvent<T extends EventV1>(event: T): T {
-  return scrubValue(event) as T;
+  return scrubValue(event) as unknown as T;
 }

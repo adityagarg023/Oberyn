@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import pytest
@@ -59,7 +59,7 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
     pool = await asyncpg.create_pool(database_url(), min_size=1, max_size=16)
     try:
         organization_id, project_id = await create_project(pool)
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
         async def write(index: int) -> None:
             event_id = uuid.uuid4()

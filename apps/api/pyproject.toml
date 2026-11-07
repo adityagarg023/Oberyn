@@ -15,6 +15,8 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0,<3",
   "uvicorn>=0.30,<1",
   "redis>=5.0,<7.0",
+  "PyJWT[crypto]>=2.10,<3",
+  "httpx>=0.27,<1",
 ]
 
 [project.optional-dependencies]
@@ -43,3 +45,10 @@ python_version = "3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true

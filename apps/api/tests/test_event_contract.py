@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -11,7 +11,10 @@ FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fix
 
 
 def valid_payload() -> dict[str, Any]:
-    return json.loads((FIXTURES / "event-v1.valid.json").read_text())
+    return cast(
+        dict[str, Any],
+        json.loads((FIXTURES / "event-v1.valid.json").read_text()),
+    )
 
 
 def validate_dict(payload: dict[str, Any], limits: EventLimits | None = None) -> EventV1:
@@ -72,13 +75,15 @@ def test_unknown_nested_fields_are_rejected() -> None:
 def test_environment_can_override_event_limits() -> None:
     from app.config import load_settings
 
-    settings = load_settings({
-        "DATABASE_URL": "postgresql://localhost/test",
-        "EVENT_MAX_PAYLOAD_BYTES": "1024",
-        "EVENT_MAX_STACK_DEPTH": "12",
-        "EVENT_MAX_BREADCRUMBS": "8",
-        "EVENT_MAX_STRING_LENGTH": "512",
-    })
+    settings = load_settings(
+        {
+            "DATABASE_URL": "postgresql://localhost/test",
+            "EVENT_MAX_PAYLOAD_BYTES": "1024",
+            "EVENT_MAX_STACK_DEPTH": "12",
+            "EVENT_MAX_BREADCRUMBS": "8",
+            "EVENT_MAX_STRING_LENGTH": "512",
+        }
+    )
     assert settings.event_max_payload_bytes == 1024
     assert settings.event_max_stack_depth == 12
     assert settings.event_max_breadcrumbs == 8

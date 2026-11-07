@@ -1,11 +1,11 @@
 """Single-statement event persistence and concurrency-safe issue upserts."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
 
 import asyncpg
-
 
 UPSERT_EVENT_SQL = """
 WITH inserted AS (
@@ -59,17 +59,50 @@ async def persist_event_and_upsert_issue(
     user_id: str | None,
 ) -> asyncpg.Record:
     """Persist the idempotent raw event and update its issue in one SQL statement."""
-    result = await pool.fetchrow(
-        UPSERT_EVENT_SQL,
-        project_id,
-        organization_id,
-        event_id,
-        payload_json,
-        fingerprint,
-        title,
-        occurred_at,
-        user_id,
-    )
+    if hasattr(pool, "acquire"):
+        async with pool.acquire() as connection:
+            async with connection.transaction():
+                result = await connection.fetchrow(
+                    UPSERT_EVENT_SQL,
+                    project_id,
+                    organization_id,
+                    event_id,
+                    payload_json,
+                    fingerprint,
+                    title,
+                    occurred_at,
+                    user_id,
+                )
+                if result is not None and result["inserted_event_id"] is not None:
+                    await connection.execute(
+                        "UPDATE raw_events SET issue_id=$3 WHERE project_id=$1 AND event_id=$2",
+                        project_id,
+                        event_id,
+                        result["issue_id"],
+                    )
+    else:
+        result = await pool.fetchrow(
+            UPSERT_EVENT_SQL,
+            project_id,
+            organization_id,
+            event_id,
+            payload_json,
+            fingerprint,
+            title,
+            occurred_at,
+            user_id,
+        )
+        if (
+            result is not None
+            and result["inserted_event_id"] is not None
+            and hasattr(pool, "execute")
+        ):
+            await pool.execute(
+                "UPDATE raw_events SET issue_id=$3 WHERE project_id=$1 AND event_id=$2",
+                project_id,
+                event_id,
+                result["issue_id"],
+            )
     if result is None:
         raise RuntimeError("atomic event upsert returned no result row")
     return result

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from app.contracts.events import validate_event_payload
 from app.fingerprints import generate_fingerprint
@@ -11,7 +11,10 @@ FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fix
 
 
 def event_payload() -> dict[str, Any]:
-    return json.loads((FIXTURES / "event-v1.valid.json").read_text())
+    return cast(
+        dict[str, Any],
+        json.loads((FIXTURES / "event-v1.valid.json").read_text()),
+    )
 
 
 def fingerprint(payload: dict[str, Any]) -> str:
@@ -55,9 +58,7 @@ def test_only_the_first_five_in_app_frames_are_used() -> None:
     second["exception"]["stacktrace"] = [
         dict(base_frame, function=f"frame-{index}") for index in range(5)
     ]
-    second["exception"]["stacktrace"].append(
-        dict(base_frame, function="different-tail")
-    )
+    second["exception"]["stacktrace"].append(dict(base_frame, function="different-tail"))
     assert fingerprint(first) == fingerprint(second)
 
 
@@ -65,12 +66,10 @@ def test_message_fallback_normalizes_numbers_uuids_and_urls() -> None:
     first = event_payload()
     second = event_payload()
     first["exception"]["value"] = (
-        "Request 42 failed for 00000000-0000-0000-0000-000000000000 "
-        "at https://host.test/a/42"
+        "Request 42 failed for 00000000-0000-0000-0000-000000000000 at https://host.test/a/42"
     )
     second["exception"]["value"] = (
-        "Request 99 failed for 00000000-0000-0000-0000-000000000001 "
-        "at https://host.test/a/99"
+        "Request 99 failed for 00000000-0000-0000-0000-000000000001 at https://host.test/a/99"
     )
     first["exception"]["stacktrace"] = []
     second["exception"]["stacktrace"] = []
