@@ -154,7 +154,7 @@ async def test_concurrent_events_create_one_issue_and_count_distinct_users() -> 
                 release="1.1.0",
             )
             regressed = await connection.fetchrow(
-                "SELECT first_seen,last_seen,event_count,user_count,status FROM issues "
+                "SELECT first_seen,last_seen,event_count,user_count,status,first_release,last_release FROM issues "
                 "WHERE project_id=$1 AND fingerprint=$2", project_id, "same-fingerprint"
             )
         assert regressed is not None
