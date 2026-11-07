@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -105,7 +106,7 @@ class IssueMergeInput(BaseModel):
     target_issue_id: UUID
 
 
-def require_admin(member: asyncpg.Record, action: str) -> None:
+def require_admin(member: Mapping[str, Any], action: str) -> None:
     if member["role"] not in {"owner", "admin"}:
         raise HTTPException(status_code=403, detail=f"Only organization admins can {action}")
 
