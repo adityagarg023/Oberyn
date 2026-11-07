@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
@@ -14,7 +14,7 @@ from app.dashboard import current_user, decode_cursor, encode_cursor, membership
 
 
 def test_cursor_round_trip() -> None:
-    seen = datetime(2026, 11, 7, 1, 30, tzinfo=timezone.utc)
+    seen = datetime(2026, 11, 7, 1, 30, tzinfo=UTC)
     issue_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
     assert decode_cursor(encode_cursor(seen, issue_id)) == (seen, issue_id)
 

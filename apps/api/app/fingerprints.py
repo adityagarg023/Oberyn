@@ -1,4 +1,5 @@
 """Stable issue grouping keys for EventV1 payloads."""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,9 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.contracts.events import EventV1
 
-_UUID_RE = re.compile(
-    r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
-)
+_UUID_RE = re.compile(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>'\"\\)]+")
 _NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])")
 _SPACE_RE = re.compile(r"\s+")

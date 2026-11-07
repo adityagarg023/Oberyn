@@ -4,14 +4,14 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
-from redis.asyncio import Redis, from_url
+from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,7 +30,7 @@ def get_database_engine() -> AsyncEngine:
 
 
 def get_redis_client(request: Request) -> Redis:
-    return request.app.state.redis
+    return cast(Redis, request.app.state.redis)
 
 
 def get_pg_pool(request: Request) -> asyncpg.Pool:
@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_size=10,
             command_timeout=5,
         )
-        redis_client = from_url(
+        redis_client = Redis.from_url(
             settings.redis_url,
             decode_responses=True,
         )
@@ -76,10 +76,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[origin.strip() for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")],
+        allow_origins=[
+            origin.strip()
+            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")
+        ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Oberyn-Key", "X-Oberyn-Project-Id", "X-Oberyn-SDK"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Oberyn-Key",
+            "X-Oberyn-Project-Id",
+            "X-Oberyn-SDK",
+        ],
     )
     app.include_router(dashboard_router)
 
@@ -157,7 +166,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if int(content_length) > max_bytes:
                     raise HTTPException(status_code=413, detail="Event payload is too large")
             except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid Content-Length header") from None
+                raise HTTPException(
+                    status_code=400, detail="Invalid Content-Length header"
+                ) from None
 
         body = bytearray()
         async for chunk in request.stream():
@@ -168,7 +179,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             event = validate_event_payload(bytes(body), settings.event_limits)
         except ValidationError as exc:
-            raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from exc
+            raise HTTPException(
+                status_code=422,
+                detail=exc.errors(include_url=False, include_input=False),
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
 

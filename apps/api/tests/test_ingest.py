@@ -2,7 +2,7 @@ import hashlib
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -113,7 +113,10 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, Fa
 
 
 def valid_event() -> dict[str, Any]:
-    return json.loads((FIXTURES / "event-v1.valid.json").read_text())
+    return cast(
+        dict[str, Any],
+        json.loads((FIXTURES / "event-v1.valid.json").read_text()),
+    )
 
 
 def headers(project_id: UUID = PROJECT_ID, key: str = PROJECT_KEY) -> dict[str, str]:
