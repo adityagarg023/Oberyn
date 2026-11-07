@@ -71,7 +71,6 @@ async def test_non_member_cannot_access_organization() -> None:
     assert error.value.status_code == 404
 
 
-
 def test_tag_filter_parses_multiple_exact_values() -> None:
     assert parse_tag_filter("browser=chrome,region=ap-south") == {
         "browser": "chrome",
@@ -122,7 +121,14 @@ async def test_issue_filters_are_parameterized_and_combined() -> None:
     assert "re.payload->'tags' @> $6::jsonb" in query
     assert "issues.title ILIKE $7" in query
     assert "ORDER BY issues.last_seen DESC,issues.id DESC" in query
-    assert args[:6] == [project_id, "resolved", "1.2.3", "production", "error", '{"browser": "chrome"}']
+    assert args[:6] == [
+        project_id,
+        "resolved",
+        "1.2.3",
+        "production",
+        "error",
+        '{"browser": "chrome"}',
+    ]
     assert args[6] == "%TypeError%"
     assert args[7] == 21
 
@@ -133,7 +139,11 @@ async def test_admin_can_transition_issue_status(new_status: str) -> None:
     org_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
     project_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
     issue_id = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
-    updated = {"id": issue_id, "status": new_status, "resolved_in_release": "1.2.3" if new_status == "resolved" else None}
+    updated = {
+        "id": issue_id,
+        "status": new_status,
+        "resolved_in_release": "1.2.3" if new_status == "resolved" else None,
+    }
     fake = SimpleNamespace(
         fetchrow=AsyncMock(
             side_effect=[
@@ -172,7 +182,6 @@ async def test_member_cannot_change_issue_status() -> None:
     assert fake.fetchrow.await_count == 1
 
 
-
 class AsyncContext:
     def __init__(self, value: object) -> None:
         self.value = value
@@ -190,16 +199,31 @@ async def test_admin_can_merge_issues_and_move_event_references() -> None:
     source_id, target_id = UUID(int=3), UUID(int=4)
     now = datetime.now(UTC)
     source = {
-        "id": source_id, "status": "unresolved", "first_seen": now,
-        "last_seen": now, "event_count": 2, "user_count": 1,
-        "first_release": "1.0.0", "last_release": "1.1.0",
+        "id": source_id,
+        "status": "unresolved",
+        "first_seen": now,
+        "last_seen": now,
+        "event_count": 2,
+        "user_count": 1,
+        "first_release": "1.0.0",
+        "last_release": "1.1.0",
     }
     target = {
-        "id": target_id, "status": "resolved", "first_seen": now,
-        "last_seen": now, "event_count": 3, "user_count": 2,
-        "first_release": "1.0.0", "last_release": "1.0.0",
+        "id": target_id,
+        "status": "resolved",
+        "first_seen": now,
+        "last_seen": now,
+        "event_count": 3,
+        "user_count": 2,
+        "first_release": "1.0.0",
+        "last_release": "1.0.0",
     }
-    merged = {"id": target_id, "status": "unresolved", "event_count": 5, "user_count": 2}
+    merged = {
+        "id": target_id,
+        "status": "unresolved",
+        "event_count": 5,
+        "user_count": 2,
+    }
     connection = SimpleNamespace(
         transaction=lambda: AsyncContext(None),
         fetchrow=AsyncMock(side_effect=[source, target, merged]),

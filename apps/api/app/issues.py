@@ -35,11 +35,13 @@ issue AS (
         last_seen = GREATEST(issues.last_seen, EXCLUDED.last_seen),
         event_count = issues.event_count + 1,
         first_release = CASE
-            WHEN EXCLUDED.first_seen < issues.first_seen AND EXCLUDED.first_release IS NOT NULL THEN EXCLUDED.first_release
+            WHEN EXCLUDED.first_seen < issues.first_seen AND EXCLUDED.first_release IS NOT NULL"
+            "THEN EXCLUDED.first_release
             ELSE COALESCE(issues.first_release, EXCLUDED.first_release)
         END,
         last_release = CASE
-            WHEN EXCLUDED.last_seen > issues.last_seen AND EXCLUDED.last_release IS NOT NULL THEN EXCLUDED.last_release
+            WHEN EXCLUDED.last_seen > issues.last_seen AND EXCLUDED.last_release IS NOT NULL THEN"
+            "EXCLUDED.last_release
             ELSE COALESCE(issues.last_release, EXCLUDED.last_release)
         END,
         status = CASE

@@ -75,7 +75,11 @@ class FakePool:
             issue["last_seen"] = max(issue["last_seen"], occurred_at)
             if release is not None:
                 issue["last_release"] = release
-            if issue["status"] == "resolved" and release is not None and release != issue.get("resolved_in_release"):
+            if (
+                issue["status"] == "resolved"
+                and release is not None
+                and release != issue.get("resolved_in_release")
+            ):
                 issue["status"] = "regressed"
 
         if user_id is not None and user_id not in self.issue_users[issue_key]:
@@ -96,7 +100,9 @@ class FakePool:
 
 
 @pytest.fixture
-def api_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, FakePool]]:
+def api_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[TestClient, FakePool]]:
     pool = FakePool()
 
     async def create_pool(**kwargs: Any) -> FakePool:
@@ -132,7 +138,9 @@ def headers(project_id: UUID = PROJECT_ID, key: str = PROJECT_KEY) -> dict[str, 
     }
 
 
-def test_valid_event_is_accepted_and_stored(api_client: tuple[TestClient, FakePool]) -> None:
+def test_valid_event_is_accepted_and_stored(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, pool = api_client
     payload = valid_event()
 
@@ -150,7 +158,9 @@ def test_valid_event_is_accepted_and_stored(api_client: tuple[TestClient, FakePo
     assert issue["event_count"] == 1
 
 
-def test_invalid_event_payload_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
+def test_invalid_event_payload_returns_422(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, _ = api_client
     payload = valid_event()
     payload["level"] = "critical"
@@ -172,7 +182,9 @@ def test_invalid_json_returns_422(api_client: tuple[TestClient, FakePool]) -> No
     assert response.status_code == 422
 
 
-def test_invalid_project_key_returns_401(api_client: tuple[TestClient, FakePool]) -> None:
+def test_invalid_project_key_returns_401(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, _ = api_client
 
     response = client.post(
@@ -197,7 +209,9 @@ def test_unknown_project_returns_401(api_client: tuple[TestClient, FakePool]) ->
     assert response.status_code == 401
 
 
-def test_project_header_mismatch_returns_401(api_client: tuple[TestClient, FakePool]) -> None:
+def test_project_header_mismatch_returns_401(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, _ = api_client
 
     response = client.post(
@@ -209,7 +223,9 @@ def test_project_header_mismatch_returns_401(api_client: tuple[TestClient, FakeP
     assert response.status_code == 401
 
 
-def test_duplicate_event_is_idempotently_accepted(api_client: tuple[TestClient, FakePool]) -> None:
+def test_duplicate_event_is_idempotently_accepted(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, pool = api_client
     payload = valid_event()
 
@@ -223,7 +239,9 @@ def test_duplicate_event_is_idempotently_accepted(api_client: tuple[TestClient, 
     assert next(iter(pool.issues.values()))["event_count"] == 1
 
 
-def test_oversized_content_length_returns_413(api_client: tuple[TestClient, FakePool]) -> None:
+def test_oversized_content_length_returns_413(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, _ = api_client
 
     response = client.post(
@@ -251,7 +269,9 @@ def test_oversized_stream_without_content_length_returns_413(
     assert len(pool.events) == 0
 
 
-def test_missing_project_key_returns_401(api_client: tuple[TestClient, FakePool]) -> None:
+def test_missing_project_key_returns_401(
+    api_client: tuple[TestClient, FakePool],
+) -> None:
     client, _ = api_client
     request_headers = {"Content-Type": "application/json"}
 

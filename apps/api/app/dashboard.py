@@ -305,22 +305,28 @@ async def list_issues(
         args.append(json.dumps(tag_filter))
         event_filters.append(f"re.payload->'tags' @> ${len(args)}::jsonb")
     if len(event_filters) > 2:
-        where.append("EXISTS (SELECT 1 FROM raw_events re WHERE " + " AND ".join(event_filters) + ")")
+        where.append(
+            "EXISTS (SELECT 1 FROM raw_events re WHERE " + " AND ".join(event_filters) + ")"
+        )
 
     if search:
         args.append("%" + search.strip() + "%")
         search_param = f"${len(args)}"
         where.append(
-            "(issues.title ILIKE " + search_param
-            + " OR issues.fingerprint ILIKE " + search_param
+            "(issues.title ILIKE "
+            + search_param
+            + " OR issues.fingerprint ILIKE "
+            + search_param
             + " OR EXISTS (SELECT 1 FROM raw_events rs WHERE rs.project_id=issues.project_id "
-            + "AND rs.issue_id=issues.id AND rs.payload::text ILIKE " + search_param + "))"
+            + "AND rs.issue_id=issues.id AND rs.payload::text ILIKE "
+            + search_param
+            + "))"
         )
 
     if cursor:
         seen, issue_id = decode_cursor(cursor)
         args.extend([seen, issue_id])
-        where.append(f"(issues.last_seen,issues.id) < (${len(args)-1},${len(args)})")
+        where.append(f"(issues.last_seen,issues.id) < (${len(args) - 1},${len(args)})")
 
     args.append(limit + 1)
     rows = await db.fetch(
@@ -421,7 +427,8 @@ async def merge_issues(
             locked: dict[UUID, asyncpg.Record | None] = {}
             for locked_id in sorted((issue_id, body.target_issue_id), key=str):
                 locked[locked_id] = await conn.fetchrow(
-                    "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR UPDATE",
+                    "SELECT * FROM issues WHERE id=$1 AND project_id=$2 AND organization_id=$3 FOR"
+                    "UPDATE",
                     locked_id,
                     project_id,
                     org_id,
@@ -432,17 +439,22 @@ async def merge_issues(
                 raise HTTPException(status_code=404, detail="Issue not found in this project")
             await conn.execute(
                 "UPDATE raw_events SET issue_id=$1 WHERE project_id=$2 AND issue_id=$3",
-                target["id"], project_id, source["id"],
+                target["id"],
+                project_id,
+                source["id"],
             )
             await conn.execute(
                 "UPDATE events SET issue_id=$1 WHERE project_id=$2 AND issue_id=$3",
-                target["id"], project_id, source["id"],
+                target["id"],
+                project_id,
+                source["id"],
             )
             await conn.execute(
                 """INSERT INTO issue_users(issue_id,project_id,user_id)
                    SELECT $1,project_id,user_id FROM issue_users WHERE issue_id=$2
                    ON CONFLICT(issue_id,user_id) DO NOTHING""",
-                target["id"], source["id"],
+                target["id"],
+                source["id"],
             )
             merged = await conn.fetchrow(
                 """UPDATE issues AS target SET
@@ -450,7 +462,8 @@ async def merge_issues(
                        last_seen=GREATEST(target.last_seen,source.last_seen),
                        event_count=target.event_count+source.event_count,
                        user_count=(SELECT count(*) FROM issue_users WHERE issue_id=target.id),
-                       first_release=CASE WHEN source.first_seen<target.first_seen THEN source.first_release ELSE target.first_release END,
+                       first_release=CASE WHEN source.first_seen<target.first_seen THEN"
+                       "source.first_release ELSE target.first_release END,
                        last_release=CASE WHEN source.last_seen>target.last_seen
                                          THEN source.last_release ELSE target.last_release END,
                        status=CASE WHEN target.status='resolved'
@@ -460,15 +473,22 @@ async def merge_issues(
                                              AND source.status IN ('unresolved','regressed')
                                         THEN NULL ELSE target.resolved_at END,
                        resolved_in_release=CASE WHEN target.status='resolved'
-                                                      AND source.status IN ('unresolved','regressed')
+                                                      AND source.status IN ('unresolved',"
+                                                      "'regressed')
                                                  THEN NULL ELSE target.resolved_in_release END
                    FROM issues AS source
                    WHERE target.id=$1 AND source.id=$2
-                   RETURNING target.id,target.title,target.status,target.event_count,target.user_count,
+                   RETURNING target.id,target.title,target.status,target.event_count,"
+                   "target.user_count,
                              target.first_seen,target.last_seen,target.first_release,target.last_release""",
-                target["id"], source["id"],
+                target["id"],
+                source["id"],
             )
-            await conn.execute("DELETE FROM issues WHERE id=$1 AND project_id=$2", source["id"], project_id)
+            await conn.execute(
+                "DELETE FROM issues WHERE id=$1 AND project_id=$2",
+                source["id"],
+                project_id,
+            )
     return {"issue": dict(merged), "merged_issue_id": str(issue_id)}
 
 
