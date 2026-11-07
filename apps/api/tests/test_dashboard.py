@@ -17,6 +17,8 @@ from app.dashboard import (
     encode_cursor,
     list_issues,
     membership,
+    merge_issues,
+    IssueMergeInput,
     parse_tag_filter,
     require_admin,
     update_issue_status,
@@ -125,12 +127,13 @@ async def test_issue_filters_are_parameterized_and_combined() -> None:
     assert args[7] == 21
 
 
+@pytest.mark.parametrize("new_status", ["unresolved", "resolved", "ignored"])
 @pytest.mark.asyncio
-async def test_admin_can_transition_issue_to_resolved() -> None:
+async def test_admin_can_transition_issue_status(new_status: str) -> None:
     org_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
     project_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
     issue_id = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
-    updated = {"id": issue_id, "status": "resolved", "resolved_in_release": "1.2.3"}
+    updated = {"id": issue_id, "status": new_status, "resolved_in_release": "1.2.3" if new_status == "resolved" else None}
     fake = SimpleNamespace(
         fetchrow=AsyncMock(
             side_effect=[
@@ -143,11 +146,11 @@ async def test_admin_can_transition_issue_to_resolved() -> None:
         org_id,
         project_id,
         issue_id,
-        IssueStatusInput(status="resolved"),
+        IssueStatusInput(status=new_status),
         {"id": "user_admin", "email": ""},
         cast(asyncpg.Pool, fake),
     )
-    assert result["issue"]["status"] == "resolved"
+    assert result["issue"]["status"] == new_status
     update_query = fake.fetchrow.await_args_list[1].args[0]
     assert "resolved_at=CASE WHEN $4='resolved' THEN now()" in update_query
     assert "resolved_in_release=CASE WHEN $4='resolved' THEN last_release" in update_query
@@ -167,3 +170,70 @@ async def test_member_cannot_change_issue_status() -> None:
         )
     assert error.value.status_code == 403
     assert fake.fetchrow.await_count == 1
+
+
+
+class AsyncContext:
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+    async def __aenter__(self) -> object:
+        return self.value
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_admin_can_merge_issues_and_move_event_references() -> None:
+    org_id, project_id = UUID(int=1), UUID(int=2)
+    source_id, target_id = UUID(int=3), UUID(int=4)
+    now = datetime.now(UTC)
+    source = {
+        "id": source_id, "status": "unresolved", "first_seen": now,
+        "last_seen": now, "event_count": 2, "user_count": 1,
+        "first_release": "1.0.0", "last_release": "1.1.0",
+    }
+    target = {
+        "id": target_id, "status": "resolved", "first_seen": now,
+        "last_seen": now, "event_count": 3, "user_count": 2,
+        "first_release": "1.0.0", "last_release": "1.0.0",
+    }
+    merged = {"id": target_id, "status": "unresolved", "event_count": 5, "user_count": 2}
+    connection = SimpleNamespace(
+        transaction=lambda: AsyncContext(None),
+        fetchrow=AsyncMock(side_effect=[source, target, merged]),
+        execute=AsyncMock(),
+    )
+    fake = SimpleNamespace(
+        fetchrow=AsyncMock(return_value={"id": UUID(int=5), "role": "owner"}),
+        acquire=lambda: AsyncContext(connection),
+    )
+    result = await merge_issues(
+        org_id,
+        project_id,
+        source_id,
+        IssueMergeInput(target_issue_id=target_id),
+        {"id": "owner_1", "email": ""},
+        cast(asyncpg.Pool, fake),
+    )
+    assert result["issue"]["id"] == target_id
+    assert result["merged_issue_id"] == str(source_id)
+    assert connection.execute.await_count == 4
+    assert "UPDATE raw_events SET issue_id=$1" in connection.execute.await_args_list[0].args[0]
+    assert "UPDATE events SET issue_id=$1" in connection.execute.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_merge_issues() -> None:
+    fake = SimpleNamespace(fetchrow=AsyncMock(return_value={"id": UUID(int=5), "role": "member"}))
+    with pytest.raises(HTTPException) as error:
+        await merge_issues(
+            UUID(int=1),
+            UUID(int=2),
+            UUID(int=3),
+            IssueMergeInput(target_issue_id=UUID(int=4)),
+            {"id": "member_1", "email": ""},
+            cast(asyncpg.Pool, fake),
+        )
+    assert error.value.status_code == 403
