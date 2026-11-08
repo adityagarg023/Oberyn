@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from typing import Any
+from uuid import UUID
 
 import asyncpg
 from redis.asyncio import Redis
@@ -28,8 +28,8 @@ async def process_message(pool: asyncpg.Pool, fields: dict[str, str]) -> None:
 
     await persist_event_and_upsert_issue(
         pool,
-        project_id=__import__("uuid").UUID(project_id),
-        organization_id=__import__("uuid").UUID(organization_id),
+        project_id=UUID(project_id),
+        organization_id=UUID(organization_id),
         event_id=event.event_id,
         payload_json=event.model_dump_json(),
         fingerprint=generate_fingerprint(event),
@@ -70,6 +70,8 @@ async def _process_messages(
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
     logging.basicConfig(level=settings.log_level)
+    if stop.is_set():
+        return
     database_url = settings.database_url
     if database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -95,6 +97,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             settings.consumer_group,
             settings.consumer_name,
         )
+        claim_cursor = "0-0"
         while not stop.is_set():
             # Reclaim work abandoned by consumers that crashed or lost their lease.
             claimed = await redis.xautoclaim(
@@ -102,9 +105,12 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 settings.consumer_group,
                 settings.consumer_name,
                 settings.claim_idle_ms,
-                start_id="0-0",
+                start_id=claim_cursor,
                 count=settings.read_count,
             )
+            claim_cursor = claimed[0]
+            if claim_cursor == "0-0":
+                claim_cursor = "0-0"
             claimed_messages = claimed[1]
             if claimed_messages:
                 await _process_messages(redis, pool, settings, claimed_messages)
