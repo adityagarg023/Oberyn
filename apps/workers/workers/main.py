@@ -72,6 +72,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     logging.basicConfig(level=settings.log_level)
     if stop.is_set():
         return
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL must be configured for the worker")
     database_url = settings.database_url
     if database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
