@@ -21,8 +21,6 @@ from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
 from app.dashboard import router as dashboard_router
 from app.db import engine
-from app.fingerprints import generate_fingerprint
-from app.issues import persist_event_and_upsert_issue
 
 
 def get_database_engine() -> AsyncEngine:
@@ -55,11 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_size=10,
             command_timeout=5,
         )
-        redis_client = Redis.from_url(
-            settings.redis_url,
-            decode_responses=True,
-        )
-
+        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
         app.state.pg_pool = pg_pool
         app.state.redis = redis_client
 
@@ -70,12 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await pg_pool.close()
             await engine.dispose()
 
-    app = FastAPI(
-        title="Oberyn API",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
-
+    app = FastAPI(title="Oberyn API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -109,24 +98,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with db_engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
         except SQLAlchemyError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Database unavailable",
-            ) from exc
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
 
         try:
             await redis_client.ping()
         except RedisError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Redis unavailable",
-            ) from exc
+            raise HTTPException(status_code=503, detail="Redis unavailable") from exc
 
-        return {
-            "status": "ok",
-            "database": "ok",
-            "redis": "ok",
-        }
+        return {"status": "ok", "database": "ok", "redis": "ok"}
 
     @app.post("/api/{project_id}/envelope", status_code=202)
     async def ingest_event(
@@ -137,10 +116,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             default=None, alias="X-Oberyn-Project-Id"
         ),
         pool: asyncpg.Pool = Depends(get_pg_pool),  # noqa: B008
+        redis_client: Redis = Depends(get_redis_client),  # noqa: B008
     ) -> dict[str, Any]:
         if header_project_id is not None and header_project_id != str(project_id):
             raise HTTPException(status_code=401, detail="Invalid project credentials")
-
         if not project_key:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
 
@@ -151,9 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 SELECT p.id, p.organization_id
                 FROM projects AS p
                 INNER JOIN project_keys AS pk ON pk.project_id = p.id
-                WHERE p.id = $1
-                  AND pk.key_hash = $2
-                  AND pk.revoked_at IS NULL
+                WHERE p.id = $1 AND pk.key_hash = $2 AND pk.revoked_at IS NULL
                 LIMIT 1
                 """,
                 project_id,
@@ -161,9 +138,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except asyncpg.PostgresError as exc:
             raise HTTPException(
-                status_code=503, detail="Ingestion storage unavailable"
+                status_code=503, detail="Ingestion authentication unavailable"
             ) from exc
-
         if project is None:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
 
@@ -172,21 +148,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if content_length is not None:
             try:
                 if int(content_length) > max_bytes:
-                    raise HTTPException(
-                        status_code=413, detail="Event payload is too large"
-                    )
+                    raise HTTPException(status_code=413, detail="Event payload is too large")
             except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid Content-Length header"
-                ) from None
+                raise HTTPException(status_code=400, detail="Invalid Content-Length header") from None
 
         body = bytearray()
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > max_bytes:
-                raise HTTPException(
-                    status_code=413, detail="Event payload is too large"
-                )
+                raise HTTPException(status_code=413, detail="Event payload is too large")
 
         try:
             event = validate_event_payload(bytes(body), settings.event_limits)
@@ -200,28 +170,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         payload_json = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
         try:
-            result = await persist_event_and_upsert_issue(
-                pool,
-                project_id=project_id,
-                organization_id=project["organization_id"],
-                event_id=event.event_id,
-                payload_json=payload_json,
-                fingerprint=generate_fingerprint(event),
-                title=f"{event.exception.type}: {event.exception.value}",
-                occurred_at=event.timestamp,
-                user_id=event.user.id if event.user is not None else None,
-                release=event.release,
+            await redis_client.xadd(
+                settings.event_stream_name,
+                {
+                    "project_id": str(project_id),
+                    "organization_id": str(project["organization_id"]),
+                    "event_id": str(event.event_id),
+                    "payload": payload_json,
+                },
             )
-        except asyncpg.PostgresError as exc:
+        except RedisError as exc:
+            logger = logging.getLogger("oberyn.ingest")
+            logger.exception("failed to enqueue event_id=%s", event.event_id)
             raise HTTPException(
-                status_code=503, detail="Ingestion storage unavailable"
+                status_code=503, detail="Ingestion queue unavailable"
             ) from exc
 
-        return {
-            "status": "accepted",
-            "event_id": str(event.event_id),
-            "duplicate": result["inserted_event_id"] is None,
-        }
+        return {"status": "accepted", "event_id": str(event.event_id)}
 
     return app
 
