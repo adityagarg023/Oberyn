@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.main import create_app
+from app.main import create_app, get_pg_pool, get_redis_client
 
 FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
 PROJECT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -19,10 +19,9 @@ PROJECT_KEY = "test-public-project-key"
 class FakePool:
     def __init__(self) -> None:
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
-        self.closed = False
 
     async def close(self) -> None:
-        self.closed = True
+        return None
 
     async def fetchrow(self, query: str, *args: Any) -> dict[str, Any] | None:
         assert "project_keys" in query
@@ -44,6 +43,29 @@ class FakeRedis:
         return f"{len(self.entries)}-0"
 
 
+@pytest.fixture
+def api_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[TestClient, FakePool, FakeRedis]]:
+    pool = FakePool()
+    redis = FakeRedis()
+
+    async def create_pool(**kwargs: Any) -> FakePool:
+        return pool
+
+    monkeypatch.setattr("app.main.asyncpg.create_pool", create_pool)
+    app = create_app(
+        Settings(
+            environment="test",
+            database_url="postgresql://localhost/oberyn_test",
+        )
+    )
+    app.dependency_overrides[get_pg_pool] = lambda: pool
+    app.dependency_overrides[get_redis_client] = lambda: cast(Any, redis)
+    with TestClient(app) as client:
+        yield client, pool, redis
+
+
 def valid_event() -> dict[str, Any]:
     return cast(
         dict[str, Any],
@@ -59,10 +81,10 @@ def headers(project_id: UUID = PROJECT_ID, key: str = PROJECT_KEY) -> dict[str, 
     }
 
 
-def test_valid_event_is_accepted_and_stored(
+def test_valid_event_is_accepted_and_enqueued(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, pool, redis = api_client
+    client, _pool, redis = api_client
     payload = valid_event()
 
     response = client.post(
@@ -76,13 +98,14 @@ def test_valid_event_is_accepted_and_stored(
     assert stream == "events.raw"
     assert fields["project_id"] == str(PROJECT_ID)
     assert fields["event_id"] == payload["event_id"]
+    assert fields["organization_id"] == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     assert json.loads(fields["payload"]) == payload
 
 
 def test_invalid_event_payload_returns_422(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _ = api_client
+    client, _pool, redis = api_client
     payload = valid_event()
     payload["level"] = "critical"
 
@@ -91,116 +114,111 @@ def test_invalid_event_payload_returns_422(
     )
 
     assert response.status_code == 422
+    assert redis.entries == []
 
 
-def test_invalid_json_returns_422(api_client: tuple[TestClient, FakePool]) -> None:
-    client, _ = api_client
-
+def test_invalid_json_returns_422(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(),
         content=b'{"schema_version":',
     )
-
     assert response.status_code == 422
+    assert redis.entries == []
 
 
 def test_invalid_project_key_returns_401(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _ = api_client
-
+    client, _pool, redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(key="incorrect-key"),
         json=valid_event(),
     )
-
     assert response.status_code == 401
+    assert redis.entries == []
 
 
-def test_unknown_project_returns_401(api_client: tuple[TestClient, FakePool]) -> None:
-    client, _ = api_client
+def test_unknown_project_returns_401(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
     unknown_project = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
-
     response = client.post(
         f"/api/{unknown_project}/envelope",
         headers=headers(project_id=unknown_project),
         json=valid_event(),
     )
-
     assert response.status_code == 401
+    assert redis.entries == []
 
 
 def test_project_header_mismatch_returns_401(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _ = api_client
-
+    client, _pool, redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(project_id=UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")),
         json=valid_event(),
     )
-
     assert response.status_code == 401
+    assert redis.entries == []
 
 
-def test_duplicate_event_is_idempotently_accepted(
-    api_client: tuple[TestClient, FakePool],
+def test_repeated_event_is_enqueued_and_worker_deduplicates(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, pool = api_client
+    client, _pool, redis = api_client
     payload = valid_event()
 
     first = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
     second = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
 
-    assert first.status_code == 202
-    assert second.status_code == 202
+    assert first.status_code == second.status_code == 202
     assert len(redis.entries) == 2
     assert redis.entries[0][1]["event_id"] == redis.entries[1][1]["event_id"]
 
 
 def test_oversized_content_length_returns_413(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _ = api_client
-
+    client, _pool, redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers={**headers(), "Content-Length": str(201 * 1024)},
         content=b"x",
     )
-
     assert response.status_code == 413
+    assert redis.entries == []
 
 
 def test_oversized_stream_without_content_length_returns_413(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
     client, _pool, redis = api_client
     payload = b"x" * (200 * 1024 + 1)
-
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(),
         content=iter([payload]),
     )
-
     assert response.status_code == 413
-    assert len(redis.entries) == 0
+    assert redis.entries == []
 
 
 def test_missing_project_key_returns_401(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _ = api_client
-    request_headers = {"Content-Type": "application/json"}
-
+    client, _pool, redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
-        headers=request_headers,
+        headers={"Content-Type": "application/json"},
         json=valid_event(),
     )
-
     assert response.status_code == 401
+    assert redis.entries == []
