@@ -109,8 +109,6 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 count=settings.read_count,
             )
             claim_cursor = claimed[0]
-            if claim_cursor == "0-0":
-                claim_cursor = "0-0"
             claimed_messages = claimed[1]
             if claimed_messages:
                 await _process_messages(redis, pool, settings, claimed_messages)
