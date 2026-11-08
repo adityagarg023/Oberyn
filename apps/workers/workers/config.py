@@ -11,7 +11,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 class Settings(BaseModel):
     environment: Environment = "development"
     log_level: LogLevel = "INFO"
-    database_url: str = Field(default="", min_length=1)
+    database_url: str = ""
     redis_url: str = "redis://localhost:6379/0"
     event_stream_name: str = "events.raw"
     consumer_group: str = "oberyn-workers"
