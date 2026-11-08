@@ -108,7 +108,7 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
         assert pending["pending"] == 1
 
         reclaimed = await redis.xautoclaim(
-            stream, group, second_consumer, 0, start_id="0-0", count=10
+            stream, group, second_consumer, settings.claim_idle_ms, start_id="0-0", count=10
         )
         assert len(reclaimed[1]) == 1
         reclaimed_id, reclaimed_fields = reclaimed[1][0]
