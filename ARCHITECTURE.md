@@ -42,9 +42,8 @@ The API validates and enqueues events in Redis Streams. Workers consume through 
 
 ## Planned next steps
 
-1. Event schema and validation (contracts and Pydantic models) with ingest endpoint and project authentication.
-2. Redis Streams producer in the API and consumer groups in the workers, with retries and dead-letter handling.
-3. Grouping (fingerprinting) and PostgreSQL storage with time-partitioned event tables.
-4. SDK capture, batching, and transport.
-5. Dashboard views and Clerk authentication.
-6. Alerts through the Notifier interface, load tests, then the extras (source maps, Python SDK, Gemini, anomaly detection, Prometheus and Grafana).
+1. Add bounded retry policies and a dead-letter stream for poison messages, with operational metrics.
+2. Add time-partitioned event storage and retention policies.
+3. Finish SDK capture, batching, and transport.
+4. Expand end-to-end/load testing and dashboard observability.
+5. Add alerts through the Notifier interface, then extras (source maps, Python SDK, Gemini, anomaly detection, Prometheus and Grafana).
