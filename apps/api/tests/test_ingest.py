@@ -18,9 +18,6 @@ PROJECT_KEY = "test-public-project-key"
 
 class FakePool:
     def __init__(self) -> None:
-        self.events: dict[tuple[UUID, UUID], dict[str, Any]] = {}
-        self.issues: dict[tuple[UUID, str], dict[str, Any]] = {}
-        self.issue_users: dict[tuple[UUID, str], set[str]] = {}
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
         self.closed = False
 
@@ -28,101 +25,23 @@ class FakePool:
         self.closed = True
 
     async def fetchrow(self, query: str, *args: Any) -> dict[str, Any] | None:
-        if "project_keys" in query:
-            project_id, key_hash = args
-            if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
-                return {
-                    "id": PROJECT_ID,
-                    "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
-                }
-            return None
-
-        assert "WITH inserted AS" in query
-        (
-            project_id,
-            organization_id,
-            event_id,
-            payload_json,
-            fingerprint,
-            title,
-            occurred_at,
-            user_id,
-            release,
-        ) = args
-        event_key = (project_id, event_id)
-        if event_key in self.events:
-            return {"inserted_event_id": None, "issue_id": None}
-
-        self.events[event_key] = json.loads(payload_json)
-        issue_key = (project_id, fingerprint)
-        if issue_key not in self.issues:
-            self.issues[issue_key] = {
-                "id": UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
-                "first_seen": occurred_at,
-                "last_seen": occurred_at,
-                "event_count": 1,
-                "user_count": 0,
-                "status": "unresolved",
-                "title": title,
-                "first_release": release,
-                "last_release": release,
+        assert "project_keys" in query
+        project_id, key_hash = args
+        if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
+            return {
+                "id": PROJECT_ID,
+                "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
             }
-            self.issue_users[issue_key] = set()
-        else:
-            issue = self.issues[issue_key]
-            issue["event_count"] += 1
-            issue["first_seen"] = min(issue["first_seen"], occurred_at)
-            issue["last_seen"] = max(issue["last_seen"], occurred_at)
-            if release is not None:
-                issue["last_release"] = release
-            if (
-                issue["status"] == "resolved"
-                and release is not None
-                and release != issue.get("resolved_in_release")
-            ):
-                issue["status"] = "regressed"
-
-        if user_id is not None and user_id not in self.issue_users[issue_key]:
-            self.issue_users[issue_key].add(user_id)
-            self.issues[issue_key]["user_count"] += 1
-
-        return {"inserted_event_id": event_id, "issue_id": self.issues[issue_key]["id"]}
-
-    async def fetchval(
-        self,
-        query: str,
-        project_id: UUID,
-        organization_id: UUID,
-        event_id: UUID,
-        payload_json: str,
-    ) -> UUID | None:
-        raise AssertionError(
-            "raw event persistence must use the atomic issue-upsert statement"
-        )
+        return None
 
 
-@pytest.fixture
-def api_client(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[tuple[TestClient, FakePool]]:
-    pool = FakePool()
+class FakeRedis:
+    def __init__(self) -> None:
+        self.entries: list[tuple[str, dict[str, str]]] = []
 
-    async def create_pool(**kwargs: Any) -> FakePool:
-        return pool
-
-    monkeypatch.setattr("app.main.asyncpg.create_pool", create_pool)
-
-    from app.main import get_pg_pool
-
-    app = create_app(
-        Settings(
-            environment="test",
-            database_url="postgresql://localhost/oberyn_test",
-        )
-    )
-    app.dependency_overrides[get_pg_pool] = lambda: pool
-    with TestClient(app) as client:
-        yield client, pool
+    async def xadd(self, stream: str, fields: dict[str, str]) -> str:
+        self.entries.append((stream, fields))
+        return f"{len(self.entries)}-0"
 
 
 def valid_event() -> dict[str, Any]:
@@ -141,9 +60,9 @@ def headers(project_id: UUID = PROJECT_ID, key: str = PROJECT_KEY) -> dict[str, 
 
 
 def test_valid_event_is_accepted_and_stored(
-    api_client: tuple[TestClient, FakePool],
+    api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, pool = api_client
+    client, pool, redis = api_client
     payload = valid_event()
 
     response = client.post(
@@ -151,15 +70,13 @@ def test_valid_event_is_accepted_and_stored(
     )
 
     assert response.status_code == 202
-    assert response.json() == {
-        "status": "accepted",
-        "event_id": payload["event_id"],
-        "duplicate": False,
-    }
-    assert len(pool.events) == 1
-    assert len(pool.issues) == 1
-    issue = next(iter(pool.issues.values()))
-    assert issue["event_count"] == 1
+    assert response.json() == {"status": "accepted", "event_id": payload["event_id"]}
+    assert len(redis.entries) == 1
+    stream, fields = redis.entries[0]
+    assert stream == "events.raw"
+    assert fields["project_id"] == str(PROJECT_ID)
+    assert fields["event_id"] == payload["event_id"]
+    assert json.loads(fields["payload"]) == payload
 
 
 def test_invalid_event_payload_returns_422(
@@ -240,9 +157,8 @@ def test_duplicate_event_is_idempotently_accepted(
 
     assert first.status_code == 202
     assert second.status_code == 202
-    assert second.json()["duplicate"] is True
-    assert len(pool.events) == 1
-    assert next(iter(pool.issues.values()))["event_count"] == 1
+    assert len(redis.entries) == 2
+    assert redis.entries[0][1]["event_id"] == redis.entries[1][1]["event_id"]
 
 
 def test_oversized_content_length_returns_413(
@@ -262,7 +178,7 @@ def test_oversized_content_length_returns_413(
 def test_oversized_stream_without_content_length_returns_413(
     api_client: tuple[TestClient, FakePool],
 ) -> None:
-    client, pool = api_client
+    client, _pool, redis = api_client
     payload = b"x" * (200 * 1024 + 1)
 
     response = client.post(
@@ -272,7 +188,7 @@ def test_oversized_stream_without_content_length_returns_413(
     )
 
     assert response.status_code == 413
-    assert len(pool.events) == 0
+    assert len(redis.entries) == 0
 
 
 def test_missing_project_key_returns_401(
