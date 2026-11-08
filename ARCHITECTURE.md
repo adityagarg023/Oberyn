@@ -16,7 +16,7 @@ SDK -> FastAPI ingest -> Redis Streams -> Python workers -> PostgreSQL -> Dashbo
 
 ## Decisions
 
-- **Fast ingest, slow processing.** The API only validates and enqueues. Anything expensive (fingerprinting, storage, alerting, AI) happens in workers, so traffic spikes fill the queue instead of timing out requests.
+- **Fast ingest, slow processing.** The API authenticates the project, validates the bounded event payload, appends it to Redis, and returns `202`. Fingerprinting, issue grouping, and PostgreSQL persistence run in workers.
 - **Redis Streams with consumer groups.** Streams provide persistence, acknowledgements, and redelivery of pending messages. Workers must tolerate duplicate deliveries, so writes are idempotent by event ID.
 - **Separate Python services.** The API and workers are deployed and scaled independently, and each has its own dependency set.
 - **Local infrastructure via Compose.** PostgreSQL and Redis run locally with pinned major versions and health checks. Production uses managed services.
@@ -38,7 +38,7 @@ SDK -> FastAPI ingest -> Redis Streams -> Python workers -> PostgreSQL -> Dashbo
 
 ## Status
 
-The repository skeleton is in place and every service starts. No business logic exists yet: the API exposes only a health endpoint, the workers wait for a shutdown signal, and the SDK exports a version constant.
+The API validates and enqueues events in Redis Streams. Workers consume through a consumer group, reclaim abandoned deliveries, and persist events and issue updates transactionally before acknowledging. The SDK and dashboard continue to evolve independently.
 
 ## Planned next steps
 
