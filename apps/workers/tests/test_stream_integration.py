@@ -10,8 +10,8 @@ import asyncpg
 import pytest
 from redis.asyncio import Redis
 
-from workers.main import _handle_message, process_message
 from workers.config import Settings
+from workers.main import _handle_message, process_message
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 REDIS_URL = os.getenv("TEST_REDIS_URL")
@@ -80,7 +80,7 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
         event_stream_name=stream,
         consumer_group=group,
         consumer_name=second_consumer,
-        claim_idle_ms=0,
+        claim_idle_ms=1,
     )
 
     try:
