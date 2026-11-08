@@ -35,7 +35,7 @@ npm install                   # installs every JavaScript workspace
 docker compose --env-file .env -f infra/docker-compose.yml up -d
 
 cd apps/api && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..
-cd apps/workers && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..
+cd apps/workers && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bin/pip install -e ../api && cd ../..
 ```
 
 ## Running services
