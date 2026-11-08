@@ -150,7 +150,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if int(content_length) > max_bytes:
                     raise HTTPException(status_code=413, detail="Event payload is too large")
             except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid Content-Length header") from None
+                raise HTTPException(
+                    status_code=400, detail="Invalid Content-Length header"
+                ) from None
 
         body = bytearray()
         async for chunk in request.stream():
