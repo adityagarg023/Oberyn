@@ -222,3 +222,18 @@ def test_missing_project_key_returns_401(
     )
     assert response.status_code == 401
     assert redis.entries == []
+
+
+def test_redis_enqueue_failure_returns_503(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.fail = True
+
+    response = client.post(
+        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event()
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Ingestion queue unavailable"}
+    assert redis.entries == []
