@@ -37,8 +37,13 @@ class FakePool:
 class FakeRedis:
     def __init__(self) -> None:
         self.entries: list[tuple[str, dict[str, str]]] = []
+        self.fail = False
 
     async def xadd(self, stream: str, fields: dict[str, str]) -> str:
+        if self.fail:
+            from redis.exceptions import RedisError
+
+            raise RedisError("Redis unavailable")
         self.entries.append((stream, fields))
         return f"{len(self.entries)}-0"
 
