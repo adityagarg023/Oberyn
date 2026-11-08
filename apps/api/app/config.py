@@ -16,6 +16,7 @@ class Settings(BaseModel):
 
     database_url: str = Field(min_length=1)
     redis_url: str = "redis://localhost:6379/0"
+    event_stream_name: str = "events.raw"
 
     event_max_payload_bytes: int = Field(default=200 * 1024, gt=0)
     event_max_stack_depth: int = Field(default=50, gt=0)
@@ -38,6 +39,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     values: dict[str, Any] = {
         "database_url": source.get("DATABASE_URL", ""),
         "redis_url": source.get("REDIS_URL", "redis://localhost:6379/0"),
+        "event_stream_name": source.get("EVENT_STREAM_NAME", "events.raw"),
         "event_max_payload_bytes": source.get("EVENT_MAX_PAYLOAD_BYTES", "204800"),
         "event_max_stack_depth": source.get("EVENT_MAX_STACK_DEPTH", "50"),
         "event_max_breadcrumbs": source.get("EVENT_MAX_BREADCRUMBS", "100"),
