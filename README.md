@@ -60,6 +60,16 @@ cd apps/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .ven
 cd apps/workers && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy workers tests && .venv/bin/pytest
 ```
 
+The Redis/PostgreSQL worker integration test uses real services. Apply the Alembic migrations to a **dedicated test database**, then run it with:
+
+```bash
+export TEST_DATABASE_URL=postgresql://oberyn:your-test-password@localhost:5432/oberyn_test
+export TEST_REDIS_URL=redis://localhost:6379/1
+cd apps/workers && .venv/bin/pytest tests/test_stream_integration.py
+```
+
+The integration test creates and removes its own organization/project and uses a uniquely named Redis stream. Do not point `TEST_DATABASE_URL` at the runtime database.
+
 ## Configuration
 
 All configuration comes from environment variables. `.env.example` lists every variable and its purpose. Never commit `.env` or put secrets in source files.
