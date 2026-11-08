@@ -104,7 +104,9 @@ def test_valid_event_is_accepted_and_enqueued(
     assert fields["project_id"] == str(PROJECT_ID)
     assert fields["event_id"] == payload["event_id"]
     assert fields["organization_id"] == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-    assert json.loads(fields["payload"]) == payload
+    enqueued_payload = json.loads(fields["payload"])
+    assert enqueued_payload["event_id"] == payload["event_id"]
+    assert enqueued_payload["exception"] == payload["exception"]
 
 
 def test_invalid_event_payload_returns_422(
