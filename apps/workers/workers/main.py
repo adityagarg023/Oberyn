@@ -4,7 +4,6 @@ import asyncio
 import logging
 import signal
 from collections.abc import Sequence
-from typing import Any
 from uuid import UUID
 
 import asyncpg
