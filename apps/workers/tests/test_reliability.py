@@ -12,7 +12,6 @@ from app.contracts.events import EventV1
 from app.fingerprints import generate_fingerprint
 from workers.config import Settings
 from workers.main import process_messages
-from workers.persistence import persist_batch
 from workers.processing import normalize_event
 
 
@@ -157,18 +156,6 @@ def make_event(event_id: UUID | None = None) -> EventV1:
     )
 
 
-def stream_message(event: EventV1, message_id: str) -> tuple[str, dict[str, str]]:
-    return (
-        message_id,
-        {
-            "project_id": str(uuid4()),
-            "organization_id": str(uuid4()),
-            "event_id": str(event.event_id),
-            "payload": event.model_dump_json(),
-        },
-    )
-
-
 def shared_stream_message(event: EventV1, message_id: str) -> tuple[str, dict[str, str]]:
     project_id, organization_id = uuid4(), uuid4()
     return (
@@ -200,10 +187,9 @@ async def test_commit_precedes_ack_and_replay_does_not_double_count() -> None:
 @pytest.mark.asyncio
 async def test_cancelled_mid_batch_rolls_back_and_replay_loses_no_events() -> None:
     pool, redis, settings = FakePool(), FakeRedis(), Settings()
-    first, second = make_event(), make_event()
     messages = [
-        shared_stream_message(first, "1-0"),
-        shared_stream_message(second, "2-0"),
+        shared_stream_message(make_event(), "1-0"),
+        shared_stream_message(make_event(), "2-0"),
     ]
     pool.connection.crash_after = 1
 
@@ -223,6 +209,29 @@ async def test_cancelled_mid_batch_rolls_back_and_replay_loses_no_events() -> No
     assert sum(pool.connection.issue_counts.values()) == 2
     assert len(pool.connection.event_rows) == 2
     assert set(redis.acked) == {"1-0", "2-0"}
+
+
+@pytest.mark.asyncio
+async def test_poison_message_moves_to_dead_letter_after_max_attempts() -> None:
+    redis = FakeRedis()
+    settings = Settings(max_attempts=2, retry_base_ms=1, retry_max_ms=1)
+    message = (
+        "9-0",
+        {
+            "project_id": str(uuid4()),
+            "organization_id": str(uuid4()),
+            "event_id": str(uuid4()),
+            "payload": "{not-json",
+        },
+    )
+
+    await process_messages(redis, FakePool(), settings, [message])
+    await process_messages(redis, FakePool(), settings, [message])
+
+    assert redis.acked == ["9-0"]
+    assert redis.dead_letters[0]["source_id"] == "9-0"
+    assert redis.dead_letters[0]["failure_attempts"] == "2"
+    assert "failure_reason" in redis.dead_letters[0]
 
 
 def test_normalization_scrubs_secrets_and_preserves_stack_frames() -> None:
