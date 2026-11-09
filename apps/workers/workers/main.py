@@ -13,7 +13,7 @@ from redis.exceptions import ResponseError
 from app.contracts.events import EventV1
 from workers.config import Settings, load_settings
 from workers.persistence import persist_batch
-from workers.processing import normalize_event
+from workers.processing import normalize_event, scrub_raw_payload, scrub_text
 
 logger = logging.getLogger("oberyn.workers")
 Message = tuple[str, dict[str, str]]
@@ -55,14 +55,17 @@ async def _dead_letter(
     # XADD and XACK share a Redis transaction: never acknowledge before the
     # dead-letter copy is durably added to the destination stream.
     pipeline = redis.pipeline(transaction=True)
+    dead_letter_fields = dict(fields)
+    if "payload" in dead_letter_fields:
+        dead_letter_fields["payload"] = scrub_raw_payload(dead_letter_fields["payload"])
     pipeline.xadd(
         settings.dead_letter_stream_name,
         {
-            **fields,
+            **dead_letter_fields,
             "source_stream": settings.event_stream_name,
             "source_id": message_id,
             "failure_attempts": str(attempts),
-            "failure_reason": error[:2000],
+            "failure_reason": scrub_text(error)[:2000],
         },
     )
     pipeline.xack(settings.event_stream_name, settings.consumer_group, message_id)
