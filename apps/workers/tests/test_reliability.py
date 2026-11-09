@@ -12,7 +12,7 @@ from app.contracts.events import EventV1
 from app.fingerprints import generate_fingerprint
 from workers.config import Settings
 from workers.main import process_messages
-from workers.processing import normalize_event
+from workers.processing import normalize_event, scrub_raw_payload
 
 
 class FakeTransaction:
@@ -241,3 +241,14 @@ def test_normalization_scrubs_secrets_and_preserves_stack_frames() -> None:
     assert normalized.exception.stacktrace[0].filename == "app/main.py"
     assert normalized.exception.stacktrace[0].function == "handle_request"
     assert generate_fingerprint(normalized)
+
+
+
+def test_dead_letter_payload_scrubbing_handles_valid_json() -> None:
+    scrubbed = scrub_raw_payload(
+        '{"request":{"headers":{"Authorization":"Bearer abc123"}},'
+        '"api_token":"top-secret"}'
+    )
+    assert "abc123" not in scrubbed
+    assert "top-secret" not in scrubbed
+    assert "[Filtered]" in scrubbed
