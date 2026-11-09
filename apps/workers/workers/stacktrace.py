@@ -45,16 +45,15 @@ def normalize_filename(filename: str) -> str:
         return ""
     if value.startswith(("http://", "https://", "file://")):
         parts = urlsplit(value)
-        return urlunsplit(
-            (parts.scheme.lower(), parts.netloc.lower(), parts.path, "", "")
-        )
+        return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, "", ""))
     return value.split("#", 1)[0].split("?", 1)[0]
 
 
 def normalize_function(function: str | None) -> str:
     """Collapse runtime-specific wrappers and anonymous function labels."""
     value = (function or "").strip()
-    value = re.sub(r"^(?:async\s+)?new\s+", "", value)
+    value = re.sub(r"^(?:async\s+)?", "", value)
+    value = re.sub(r"^new\s+", "", value)
     value = re.sub(r"^Object\.<anonymous>$", "<anonymous>", value)
     value = re.sub(r"^Module\._compile$", "Module._compile", value)
     value = re.sub(r"\s+", " ", value)
@@ -73,6 +72,8 @@ def _parse_location(location: str) -> tuple[str, int | None, int | None] | None:
         if ":" not in location and location.startswith(("/", "./", "../")):
             return normalize_filename(location), None, None
         return None
+    if re.search(r":(?:[^:/]+)$", match.group("file")):
+        return None
     filename = normalize_filename(match.group("file"))
     if not filename:
         return None
@@ -85,9 +86,7 @@ def _parse_location(location: str) -> tuple[str, int | None, int | None] | None:
 
 def _parse_line(line: str) -> StackFrame | None:
     value = line.rstrip()
-    if not value.strip() or value.lstrip().startswith(
-        ("Error", "TypeError", "ReferenceError")
-    ):
+    if not value.strip() or value.lstrip().startswith(("Error", "TypeError", "ReferenceError")):
         return None
 
     function = ""
@@ -135,9 +134,7 @@ def is_internal_frame(frame: StackFrame) -> bool:
 def select_relevant_frames(frames: Iterable[StackFrame]) -> list[StackFrame]:
     """Prefer app frames; otherwise retain non-library frames as a fallback."""
     materialized = list(frames)
-    app_frames = [
-        frame for frame in materialized if frame.in_app and not is_internal_frame(frame)
-    ]
+    app_frames = [frame for frame in materialized if frame.in_app and not is_internal_frame(frame)]
     if app_frames:
         return app_frames
     return [frame for frame in materialized if not is_internal_frame(frame)]
@@ -162,16 +159,8 @@ def normalize_frames(
             frame = StackFrame(
                 normalize_filename(filename),
                 normalize_function(function),
-                (
-                    lineno
-                    if isinstance(lineno, int) and not isinstance(lineno, bool)
-                    else None
-                ),
-                (
-                    colno
-                    if isinstance(colno, int) and not isinstance(colno, bool)
-                    else None
-                ),
+                (lineno if isinstance(lineno, int) and not isinstance(lineno, bool) else None),
+                (colno if isinstance(colno, int) and not isinstance(colno, bool) else None),
                 in_app if isinstance(in_app, bool) else True,
             )
         filename = normalize_filename(frame.filename)

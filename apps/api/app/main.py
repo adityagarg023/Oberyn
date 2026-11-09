@@ -45,9 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         database_url = settings.database_url
         if database_url.startswith("postgresql+asyncpg://"):
-            database_url = database_url.replace(
-                "postgresql+asyncpg://", "postgresql://", 1
-            )
+            database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
         pg_pool = await asyncpg.create_pool(
             dsn=database_url,
@@ -80,9 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             origin.strip()
-            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(
-                ","
-            )
+            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")
         ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
@@ -133,9 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project_id: UUID,
         request: Request,
         project_key: str | None = Header(default=None, alias="X-Oberyn-Key"),
-        header_project_id: str | None = Header(
-            default=None, alias="X-Oberyn-Project-Id"
-        ),
+        header_project_id: str | None = Header(default=None, alias="X-Oberyn-Project-Id"),
         pool: asyncpg.Pool = Depends(get_pg_pool),  # noqa: B008
     ) -> dict[str, Any]:
         if header_project_id is not None and header_project_id != str(project_id):
@@ -160,9 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 key_hash,
             )
         except asyncpg.PostgresError as exc:
-            raise HTTPException(
-                status_code=503, detail="Ingestion storage unavailable"
-            ) from exc
+            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
 
         if project is None:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
@@ -172,9 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if content_length is not None:
             try:
                 if int(content_length) > max_bytes:
-                    raise HTTPException(
-                        status_code=413, detail="Event payload is too large"
-                    )
+                    raise HTTPException(status_code=413, detail="Event payload is too large")
             except ValueError:
                 raise HTTPException(
                     status_code=400, detail="Invalid Content-Length header"
@@ -184,9 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > max_bytes:
-                raise HTTPException(
-                    status_code=413, detail="Event payload is too large"
-                )
+                raise HTTPException(status_code=413, detail="Event payload is too large")
 
         try:
             event = validate_event_payload(bytes(body), settings.event_limits)
@@ -213,9 +201,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 release=event.release,
             )
         except asyncpg.PostgresError as exc:
-            raise HTTPException(
-                status_code=503, detail="Ingestion storage unavailable"
-            ) from exc
+            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
 
         return {
             "status": "accepted",

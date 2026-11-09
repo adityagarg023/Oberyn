@@ -35,9 +35,7 @@ async def current_user(
         raise HTTPException(status_code=503, detail="CLERK_ISSUER is not configured")
     global _jwks
     if _jwks is None:
-        _jwks = PyJWKClient(
-            issuer + "/.well-known/jwks.json", cache_jwk_set=True, lifespan=300
-        )
+        _jwks = PyJWKClient(issuer + "/.well-known/jwks.json", cache_jwk_set=True, lifespan=300)
     try:
         token = authorization[7:]
         key = await asyncio.to_thread(_jwks.get_signing_key_from_jwt, token)
@@ -49,9 +47,7 @@ async def current_user(
             options={"require": ["sub", "exp", "iss"]},
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid or expired session"
-        ) from exc
+        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
     return {"id": str(claims["sub"]), "email": str(claims.get("email", ""))}
 
 
@@ -59,9 +55,7 @@ def get_pool(request: Request) -> asyncpg.Pool:
     return request.app.state.pg_pool
 
 
-async def membership(
-    db: asyncpg.Pool, org_id: UUID, user: dict[str, str]
-) -> asyncpg.Record:
+async def membership(db: asyncpg.Pool, org_id: UUID, user: dict[str, str]) -> asyncpg.Record:
     row = await db.fetchrow(
         """SELECT m.id,m.role,o.id AS organization_id FROM members m
            JOIN organizations o ON o.id=m.organization_id
@@ -77,9 +71,7 @@ async def membership(
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:70]
     if not slug:
-        raise HTTPException(
-            status_code=422, detail="Name must contain letters or numbers"
-        )
+        raise HTTPException(status_code=422, detail="Name must contain letters or numbers")
     return slug
 
 
@@ -94,9 +86,7 @@ def decode_cursor(value: str) -> tuple[datetime, UUID]:
         timestamp, issue_id = raw.split("|", 1)
         return datetime.fromisoformat(timestamp), UUID(issue_id)
     except (ValueError, TypeError) as exc:
-        raise HTTPException(
-            status_code=400, detail="Invalid pagination cursor"
-        ) from exc
+        raise HTTPException(status_code=400, detail="Invalid pagination cursor") from exc
 
 
 class OrganizationInput(BaseModel):
@@ -118,9 +108,7 @@ class IssueMergeInput(BaseModel):
 
 def require_admin(member: Mapping[str, Any], action: str) -> None:
     if member["role"] not in {"owner", "admin"}:
-        raise HTTPException(
-            status_code=403, detail=f"Only organization admins can {action}"
-        )
+        raise HTTPException(status_code=403, detail=f"Only organization admins can {action}")
 
 
 def parse_tag_filter(value: str | None) -> dict[str, str]:
@@ -156,18 +144,14 @@ async def create_organization(
 ) -> dict[str, Any]:
     secret_key = os.getenv("CLERK_SECRET_KEY", "")
     if not secret_key:
-        raise HTTPException(
-            status_code=503, detail="CLERK_SECRET_KEY is not configured"
-        )
+        raise HTTPException(status_code=503, detail="CLERK_SECRET_KEY is not configured")
     async with httpx.AsyncClient(timeout=5) as client:
         profile = await client.get(
             "https://api.clerk.com/v1/users/" + user["id"],
             headers={"Authorization": "Bearer " + secret_key},
         )
     if profile.status_code != 200:
-        raise HTTPException(
-            status_code=502, detail="Could not retrieve Clerk user profile"
-        )
+        raise HTTPException(status_code=502, detail="Could not retrieve Clerk user profile")
     profile_data = profile.json()
     addresses = profile_data.get("email_addresses", [])
     email = next(
@@ -179,16 +163,12 @@ async def create_organization(
         None,
     )
     if not email:
-        raise HTTPException(
-            status_code=422, detail="Add an email address to your Clerk account"
-        )
+        raise HTTPException(status_code=422, detail="Add an email address to your Clerk account")
     org_id, member_id = uuid4(), uuid4()
     base, slug, suffix = slugify(body.name), slugify(body.name), 1
     async with db.acquire() as conn:
         async with conn.transaction():
-            while await conn.fetchval(
-                "SELECT 1 FROM organizations WHERE slug=$1", slug
-            ):
+            while await conn.fetchval("SELECT 1 FROM organizations WHERE slug=$1", slug):
                 suffix += 1
                 slug = f"{base}-{suffix}"
             await conn.execute(
@@ -237,9 +217,7 @@ async def create_project(
 ) -> dict[str, Any]:
     member = await membership(db, org_id, user)
     if member["role"] not in ("owner", "admin"):
-        raise HTTPException(
-            status_code=403, detail="Only organization admins can create projects"
-        )
+        raise HTTPException(status_code=403, detail="Only organization admins can create projects")
     project_id, key_id = uuid4(), uuid4()
     secret = "ob_live_" + secrets.token_urlsafe(32)
     base, slug, suffix = slugify(body.name), slugify(body.name), 1
@@ -328,9 +306,7 @@ async def list_issues(
         event_filters.append(f"re.payload->'tags' @> ${len(args)}::jsonb")
     if len(event_filters) > 2:
         where.append(
-            "EXISTS (SELECT 1 FROM raw_events re WHERE "
-            + " AND ".join(event_filters)
-            + ")"
+            "EXISTS (SELECT 1 FROM raw_events re WHERE " + " AND ".join(event_filters) + ")"
         )
 
     if search:
@@ -366,9 +342,7 @@ async def list_issues(
     return {
         "data": [dict(row) for row in rows],
         "next_cursor": (
-            encode_cursor(rows[-1]["last_seen"], rows[-1]["id"])
-            if more and rows
-            else None
+            encode_cursor(rows[-1]["last_seen"], rows[-1]["id"]) if more and rows else None
         ),
     }
 
@@ -446,9 +420,7 @@ async def merge_issues(
     member = await membership(db, org_id, user)
     require_admin(member, "merge issues")
     if body.target_issue_id == issue_id:
-        raise HTTPException(
-            status_code=422, detail="An issue cannot be merged into itself"
-        )
+        raise HTTPException(status_code=422, detail="An issue cannot be merged into itself")
 
     async with db.acquire() as conn:
         async with conn.transaction():
@@ -464,9 +436,7 @@ async def merge_issues(
             source = locked[issue_id]
             target = locked[body.target_issue_id]
             if source is None or target is None:
-                raise HTTPException(
-                    status_code=404, detail="Issue not found in this project"
-                )
+                raise HTTPException(status_code=404, detail="Issue not found in this project")
             await conn.execute(
                 "UPDATE raw_events SET issue_id=$1 WHERE project_id=$2 AND issue_id=$3",
                 target["id"],
@@ -542,9 +512,4 @@ async def event_counts(
         project_id,
         datetime.now(UTC) - timedelta(days=days - 1),
     )
-    return {
-        "data": [
-            {"day": row["day"].date().isoformat(), "count": row["count"]}
-            for row in rows
-        ]
-    }
+    return {"data": [{"day": row["day"].date().isoformat(), "count": row["count"]} for row in rows]}
