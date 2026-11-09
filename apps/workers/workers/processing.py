@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -17,6 +18,12 @@ _SECRET_ASSIGNMENT = re.compile(
 _QUERY = re.compile(r"([?&](?:token|key|secret|password|signature)=)[^&#\s]+")
 
 
+def scrub_text(value: str) -> str:
+    value = _BEARER.sub("Bearer [Filtered]", value)
+    value = _SECRET_ASSIGNMENT.sub(r"\1=[Filtered]", value)
+    return _QUERY.sub(r"\1[Filtered]", value)
+
+
 def _scrub(value: Any) -> Any:
     if isinstance(value, dict):
         return {
@@ -26,18 +33,25 @@ def _scrub(value: Any) -> Any:
     if isinstance(value, list):
         return [_scrub(child) for child in value]
     if isinstance(value, str):
-        value = _BEARER.sub("Bearer [Filtered]", value)
-        value = _SECRET_ASSIGNMENT.sub(r"\1=[Filtered]", value)
-        return _QUERY.sub(r"\1[Filtered]", value)
+        return scrub_text(value)
     return value
+
+
+def scrub_raw_payload(payload: str) -> str:
+    """Scrub a raw stream payload before placing it in the dead-letter stream."""
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError:
+        return scrub_text(payload)
+    return json.dumps(_scrub(decoded), separators=(",", ":"), ensure_ascii=False)
 
 
 def parse_stacktrace(event: EventV1) -> list[dict[str, Any]]:
     """Normalize validated SDK frames into a stable storage representation."""
     return [
         {
-            "filename": frame.filename.strip(),
-            "function": " ".join(frame.function.split()) or "<anonymous>",
+            "filename": scrub_text(frame.filename.strip()),
+            "function": scrub_text(" ".join(frame.function.split()) or "<anonymous>"),
             "lineno": frame.lineno,
             "colno": frame.colno,
             "in_app": frame.in_app,
