@@ -38,6 +38,11 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 python_version = "3.11"
+mypy_path = "../api"
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+disable_error_code = ["import-untyped"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
