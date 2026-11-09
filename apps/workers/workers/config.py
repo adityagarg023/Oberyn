@@ -19,7 +19,6 @@ class Settings(BaseModel):
     dead_letter_stream_name: str = "events.dead"
     failure_hash_name: str = "events:failures"
     batch_size: int = Field(default=100, gt=0, le=500)
-    read_count: int = Field(default=100, gt=0, le=500)
     block_ms: int = Field(default=1000, gt=0)
     claim_idle_ms: int = Field(default=60_000, gt=0)
     max_attempts: int = Field(default=5, gt=0)
@@ -36,8 +35,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "consumer_group": source.get("EVENT_CONSUMER_GROUP", "oberyn-workers"),
         "dead_letter_stream_name": source.get("EVENT_DEAD_LETTER_STREAM", "events.dead"),
         "failure_hash_name": source.get("EVENT_FAILURE_HASH", "events:failures"),
-        "batch_size": source.get("EVENT_BATCH_SIZE", "100"),
-        "read_count": source.get("EVENT_READ_COUNT", "100"),
+        "batch_size": source.get("EVENT_BATCH_SIZE", source.get("EVENT_READ_COUNT", "100")),
         "block_ms": source.get("EVENT_BLOCK_MS", "1000"),
         "claim_idle_ms": source.get("EVENT_CLAIM_IDLE_MS", "60000"),
         "max_attempts": source.get("EVENT_MAX_ATTEMPTS", "5"),
