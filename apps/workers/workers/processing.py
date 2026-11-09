@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+from app.contracts.events import EventV1
+
+_SENSITIVE_KEY = re.compile(
+    r"(?:password|passwd|secret|token|authorization|cookie|api[_-]?key|"
+    r"access[_-]?key|private[_-]?key|client[_-]?secret)",
+    re.IGNORECASE,
+)
+_BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(password|token|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+"
+)
+_QUERY = re.compile(r"([?&](?:token|key|secret|password|signature)=)[^&#\s]+")
+
+
+def scrub_text(value: str) -> str:
+    value = _BEARER.sub("Bearer [Filtered]", value)
+    value = _SECRET_ASSIGNMENT.sub(r"\1=[Filtered]", value)
+    return _QUERY.sub(r"\1[Filtered]", value)
+
+
+def _scrub(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): "[Filtered]" if _SENSITIVE_KEY.search(str(key)) else _scrub(child)
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [_scrub(child) for child in value]
+    if isinstance(value, str):
+        return scrub_text(value)
+    return value
+
+
+def scrub_raw_payload(payload: str) -> str:
+    """Scrub a raw stream payload before placing it in the dead-letter stream."""
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError:
+        return scrub_text(payload)
+    return json.dumps(_scrub(decoded), separators=(",", ":"), ensure_ascii=False)
+
+
+def parse_stacktrace(event: EventV1) -> list[dict[str, Any]]:
+    """Normalize validated SDK frames into a stable storage representation."""
+    return [
+        {
+            "filename": scrub_text(frame.filename.strip()),
+            "function": scrub_text(" ".join(frame.function.split()) or "<anonymous>"),
+            "lineno": frame.lineno,
+            "colno": frame.colno,
+            "in_app": frame.in_app,
+        }
+        for frame in event.exception.stacktrace
+    ]
+
+
+def normalize_event(event: EventV1) -> EventV1:
+    """Return a normalized, scrubbed copy without mutating the validated input."""
+    payload = event.model_dump(mode="python")
+    payload["breadcrumbs"] = _scrub(payload["breadcrumbs"])
+    payload["tags"] = _scrub(payload["tags"])
+    payload["request"] = _scrub(payload["request"])
+    payload["exception"]["value"] = _scrub(payload["exception"]["value"])
+    payload["exception"]["stacktrace"] = parse_stacktrace(event)
+    return EventV1.model_validate(payload)
