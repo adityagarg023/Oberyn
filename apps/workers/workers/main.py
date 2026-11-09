@@ -199,8 +199,10 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     finally:
         # No new reads are started after stop; any currently awaited transaction
         # finishes before resources close. Unacked work remains reclaimable.
-        await redis.aclose()
-        await pool.close()
+        try:
+            await redis.aclose()
+        finally:
+            await pool.close()
         logger.info("worker stopped")
 
 
