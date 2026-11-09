@@ -115,9 +115,7 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
         assert reclaimed_id == message_id
 
         # Reprocessing must not increment issue counts or create a second raw event.
-        await _handle_message(
-            redis, pool, settings, reclaimed_id, reclaimed_fields
-        )
+        await _handle_message(redis, pool, settings, reclaimed_id, reclaimed_fields)
 
         async with pool.acquire() as connection:
             raw_count = await connection.fetchval(
@@ -135,8 +133,6 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
     finally:
         await redis.delete(stream)
         async with pool.acquire() as connection:
-            await connection.execute(
-                "DELETE FROM organizations WHERE id=$1", organization_id
-            )
+            await connection.execute("DELETE FROM organizations WHERE id=$1", organization_id)
         await redis.aclose()
         await pool.close()
