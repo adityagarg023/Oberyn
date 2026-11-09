@@ -9,6 +9,8 @@ description = "Oberyn background workers"
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.9,<3",
+  "asyncpg>=0.29,<1",
+  "redis>=5.0,<7.0",
 ]
 
 [project.optional-dependencies]
