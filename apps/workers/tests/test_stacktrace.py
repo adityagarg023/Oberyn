@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from workers.stacktrace import (
     StackFrame,
@@ -95,9 +96,7 @@ def test_fingerprint_is_independent_of_line_and_column(
     query=st.text(alphabet=st.characters(blacklist_characters="#"), max_size=30),
     fragment=st.text(max_size=30),
 )
-def test_filename_normalization_removes_query_and_fragment(
-    query: str, fragment: str
-) -> None:
+def test_filename_normalization_removes_query_and_fragment(query: str, fragment: str) -> None:
     result = normalize_filename(f"https://example.test/app.js?{query}#{fragment}")
     assert result == "https://example.test/app.js"
 

@@ -46,6 +46,36 @@ class FakeRedis:
             raise RedisError("Redis unavailable")
         self.entries.append((stream, fields))
         return f"{len(self.entries)}-0"
+            self.issue_users[issue_key] = set()
+        else:
+            issue = self.issues[issue_key]
+            issue["event_count"] += 1
+            issue["first_seen"] = min(issue["first_seen"], occurred_at)
+            issue["last_seen"] = max(issue["last_seen"], occurred_at)
+            if release is not None:
+                issue["last_release"] = release
+            if (
+                issue["status"] == "resolved"
+                and release is not None
+                and release != issue.get("resolved_in_release")
+            ):
+                issue["status"] = "regressed"
+
+        if user_id is not None and user_id not in self.issue_users[issue_key]:
+            self.issue_users[issue_key].add(user_id)
+            self.issues[issue_key]["user_count"] += 1
+
+        return {"inserted_event_id": event_id, "issue_id": self.issues[issue_key]["id"]}
+
+    async def fetchval(
+        self,
+        query: str,
+        project_id: UUID,
+        organization_id: UUID,
+        event_id: UUID,
+        payload_json: str,
+    ) -> UUID | None:
+        raise AssertionError("raw event persistence must use the atomic issue-upsert statement")
 
 
 @pytest.fixture
@@ -92,9 +122,7 @@ def test_valid_event_is_accepted_and_enqueued(
     client, _pool, redis = api_client
     payload = valid_event()
 
-    response = client.post(
-        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload
-    )
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
 
     assert response.status_code == 202
     assert response.json() == {"status": "accepted", "event_id": payload["event_id"]}
@@ -116,9 +144,7 @@ def test_invalid_event_payload_returns_422(
     payload = valid_event()
     payload["level"] = "critical"
 
-    response = client.post(
-        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload
-    )
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
 
     assert response.status_code == 422
     assert redis.entries == []

@@ -43,9 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         database_url = settings.database_url
         if database_url.startswith("postgresql+asyncpg://"):
-            database_url = database_url.replace(
-                "postgresql+asyncpg://", "postgresql://", 1
-            )
+            database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
         pg_pool = await asyncpg.create_pool(
             dsn=database_url,
@@ -69,9 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             origin.strip()
-            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(
-                ","
-            )
+            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")
         ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
@@ -112,9 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project_id: UUID,
         request: Request,
         project_key: str | None = Header(default=None, alias="X-Oberyn-Key"),
-        header_project_id: str | None = Header(
-            default=None, alias="X-Oberyn-Project-Id"
-        ),
+        header_project_id: str | None = Header(default=None, alias="X-Oberyn-Project-Id"),
         pool: asyncpg.Pool = Depends(get_pg_pool),  # noqa: B008
         redis_client: Redis = Depends(get_redis_client),  # noqa: B008
     ) -> dict[str, Any]:
@@ -140,6 +134,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(
                 status_code=503, detail="Ingestion authentication unavailable"
             ) from exc
+            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
+
         if project is None:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
 
@@ -187,6 +183,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(
                 status_code=503, detail="Ingestion queue unavailable"
             ) from exc
+        except asyncpg.PostgresError as exc:
+            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
 
         return {"status": "accepted", "event_id": str(event.event_id)}
 
