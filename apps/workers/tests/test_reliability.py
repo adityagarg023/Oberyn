@@ -132,8 +132,8 @@ def make_event(event_id: UUID | None = None) -> EventV1:
     return EventV1.model_validate(
         {
             "schema_version": 1,
-            "event_id": str(event_id or uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
+            "event_id": event_id or uuid4(),
+            "timestamp": datetime.now(UTC),
             "platform": "python",
             "level": "error",
             "exception": {
