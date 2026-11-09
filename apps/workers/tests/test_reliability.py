@@ -32,7 +32,7 @@ class FakeTransaction:
 class FakeConnection:
     def __init__(self) -> None:
         self.raw_ids: set[tuple[UUID, UUID]] = set()
-        self.issue_counts: dict[str, int] = {}
+        self.issue_counts: dict[tuple[UUID, str], int] = {}
         self.event_rows: set[tuple[UUID, UUID]] = set()
         self.event_inserts = 0
         self.crash_after: int | None = None
@@ -54,11 +54,12 @@ class FakeConnection:
     async def fetchrow(self, query: str, *args: Any) -> dict[str, Any]:
         project_id, _organization_id, event_id = args[:3]
         fingerprint = args[4]
+        issue_key = (project_id, fingerprint)
         key = (project_id, event_id)
         if key in self.raw_ids:
             return {"inserted_event_id": None, "issue_id": None}
         self.raw_ids.add(key)
-        self.issue_counts[fingerprint] = self.issue_counts.get(fingerprint, 0) + 1
+        self.issue_counts[issue_key] = self.issue_counts.get(issue_key, 0) + 1
         return {"inserted_event_id": event_id, "issue_id": uuid4()}
 
     async def execute(self, query: str, *args: Any) -> str:
@@ -191,6 +192,8 @@ async def test_cancelled_mid_batch_rolls_back_and_replay_loses_no_events() -> No
         shared_stream_message(make_event(), "1-0"),
         shared_stream_message(make_event(), "2-0"),
     ]
+    messages[1][1]["project_id"] = messages[0][1]["project_id"]
+    messages[1][1]["organization_id"] = messages[0][1]["organization_id"]
     pool.connection.crash_after = 1
 
     task = asyncio.create_task(process_messages(redis, pool, settings, messages))
@@ -206,7 +209,7 @@ async def test_cancelled_mid_batch_rolls_back_and_replay_loses_no_events() -> No
     await process_messages(redis, pool, settings, messages)
 
     assert len(pool.connection.raw_ids) == 2
-    assert sum(pool.connection.issue_counts.values()) == 2
+    assert list(pool.connection.issue_counts.values()) == [2]
     assert len(pool.connection.event_rows) == 2
     assert set(redis.acked) == {"1-0", "2-0"}
 
