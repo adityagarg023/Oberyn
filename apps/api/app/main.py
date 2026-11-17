@@ -250,7 +250,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 event_id=event.event_id,
                 payload=payload_json,
                 max_stream_length=settings.ingest_max_stream_length,
-                monthly_limit=credentials.monthly_event_quota,
+                monthly_limit=min(
+                    credentials.monthly_event_quota, settings.ingest_monthly_event_quota
+                ),
             )
         except RedisError as exc:
             logging.getLogger("oberyn.ingest").exception(
