@@ -76,6 +76,14 @@ class ProjectCredentials:
     monthly_event_quota: int = 1_000_000
 
 
+def decode_cors_origins(value: Any) -> tuple[str, ...]:
+    """Normalize asyncpg JSONB values (str) and already-decoded test values."""
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, list):
+        return ()
+    return tuple(str(origin) for origin in decoded)
+
+
 def dsn_cache_key(project_id: UUID, key_hash: str) -> str:
     return f"oberyn:dsn:{project_id}:{key_hash}"
 
@@ -95,7 +103,7 @@ async def resolve_project_key(
         return ProjectCredentials(
             project_id=UUID(value["project_id"]),
             organization_id=UUID(value["organization_id"]),
-            cors_origins=tuple(value.get("cors_origins", [])),
+            cors_origins=decode_cors_origins(value.get("cors_origins", [])),
             monthly_event_quota=int(value.get("monthly_event_quota", 1_000_000)),
         )
 
@@ -117,7 +125,7 @@ async def resolve_project_key(
     credentials = ProjectCredentials(
         project_id=UUID(str(row["id"])),
         organization_id=UUID(str(row["organization_id"])),
-        cors_origins=tuple(row.get("cors_origins") or []),
+        cors_origins=decode_cors_origins(row.get("cors_origins") or []),
         monthly_event_quota=int(row["monthly_event_quota"]),
     )
     await redis.set(
