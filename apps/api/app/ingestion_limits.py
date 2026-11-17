@@ -1,4 +1,5 @@
 """Atomic Redis-backed limits shared by all Oberyn API processes."""
+
 from __future__ import annotations
 
 import json
