@@ -280,3 +280,75 @@ def test_redis_enqueue_failure_returns_503(
     assert response.status_code == 503
     assert response.json() == {"detail": "Ingestion queue unavailable"}
     assert redis.entries == []
+
+
+def test_project_rate_limit_returns_429_with_retry_after(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.bucket_reject = True
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event())
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "3"
+
+
+def test_spike_protection_returns_429(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.spike_reject = True
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event())
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "4"
+
+
+def test_monthly_quota_returns_429(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.quota_reject = True
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event())
+    assert response.status_code == 429
+    assert "Retry-After" in response.headers
+
+
+def test_queue_backpressure_returns_503(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.queue_reject = True
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event())
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+
+
+def test_project_cors_allowlist_handles_preflight(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, pool, _redis = api_client
+    pool.cors_origins = ["https://console.example.com"]
+    response = client.options(
+        f"/api/{PROJECT_ID}/envelope",
+        headers={
+            "Origin": "https://console.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "X-Oberyn-Key",
+        },
+    )
+    assert response.status_code == 204
+    assert response.headers["Access-Control-Allow-Origin"] == "https://console.example.com"
+
+
+def test_project_cors_allowlist_rejects_unlisted_origin(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, pool, _redis = api_client
+    pool.cors_origins = ["https://console.example.com"]
+    response = client.options(
+        f"/api/{PROJECT_ID}/envelope",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 403
