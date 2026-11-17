@@ -3,20 +3,37 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
+from app.contracts.events import EventV1
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
-from app.contracts.events import EventV1
 from workers.config import Settings, load_settings
 from workers.persistence import persist_batch
 from workers.processing import normalize_event, scrub_raw_payload, scrub_text
 
 logger = logging.getLogger("oberyn.workers")
 Message = tuple[str, dict[str, str]]
+
+
+class RedisPipelineProtocol(Protocol):
+    def xack(self, stream: str, group: str, *ids: str) -> Any: ...
+
+    def hdel(self, key: str, *ids: str) -> Any: ...
+
+    def xadd(self, stream: str, fields: dict[str, str]) -> Any: ...
+
+    async def execute(self) -> list[Any]: ...
+
+
+class RedisClientProtocol(Protocol):
+    def pipeline(self, transaction: bool = True) -> RedisPipelineProtocol: ...
+
+    async def hincrby(self, key: str, message_id: str, amount: int) -> int: ...
 
 
 def _prepare_message(fields: dict[str, str]) -> tuple[UUID, UUID, EventV1]:
@@ -28,7 +45,7 @@ def _prepare_message(fields: dict[str, str]) -> tuple[UUID, UUID, EventV1]:
     return project_id, organization_id, normalize_event(event)
 
 
-async def _ack(redis: Redis, settings: Settings, messages: Sequence[Message]) -> None:
+async def _ack(redis: RedisClientProtocol, settings: Settings, messages: Sequence[Message]) -> None:
     if not messages:
         return
     pipeline = redis.pipeline(transaction=True)
@@ -45,7 +62,7 @@ async def _ack(redis: Redis, settings: Settings, messages: Sequence[Message]) ->
 
 
 async def _dead_letter(
-    redis: Redis,
+    redis: RedisClientProtocol,
     settings: Settings,
     message_id: str,
     fields: dict[str, str],
@@ -55,39 +72,54 @@ async def _dead_letter(
     # XADD and XACK share a Redis transaction: never acknowledge before the
     # dead-letter copy is durably added to the destination stream.
     pipeline = redis.pipeline(transaction=True)
+
     dead_letter_fields = dict(fields)
     if "payload" in dead_letter_fields:
         dead_letter_fields["payload"] = scrub_raw_payload(dead_letter_fields["payload"])
-    pipeline.xadd(
-        settings.dead_letter_stream_name,
-        {
-            **dead_letter_fields,
-            "source_stream": settings.event_stream_name,
-            "source_id": message_id,
-            "failure_attempts": str(attempts),
-            "failure_reason": scrub_text(error)[:2000],
-        },
-    )
+
+    redis_fields: dict[str, str] = {}
+
+    for key, value in dead_letter_fields.items():
+        redis_fields[key] = value
+
+    redis_fields["source_stream"] = settings.event_stream_name
+    redis_fields["source_id"] = message_id
+    redis_fields["failure_attempts"] = str(attempts)
+    redis_fields["failure_reason"] = scrub_text(error)[:2000]
+
+    pipeline.xadd(settings.dead_letter_stream_name, redis_fields)
     pipeline.xack(settings.event_stream_name, settings.consumer_group, message_id)
     pipeline.hdel(settings.failure_hash_name, message_id)
+
     await pipeline.execute()
-    logger.error("event moved to dead-letter stream stream_id=%s attempts=%d", message_id, attempts)
+
+    logger.error(
+        "event moved to dead-letter stream stream_id=%s attempts=%d",
+        message_id,
+        attempts,
+    )
 
 
 async def _record_failure(
-    redis: Redis,
+    redis: RedisClientProtocol,
     settings: Settings,
     message: Message,
     error: Exception,
 ) -> int | None:
     message_id, fields = message
-    attempts = int(await redis.hincrby(settings.failure_hash_name, message_id, 1))
+    increment_result = cast(
+        Awaitable[int],
+        redis.hincrby(settings.failure_hash_name, message_id, 1),
+    )
+    attempts = await increment_result
     if attempts >= settings.max_attempts:
         await _dead_letter(redis, settings, message_id, fields, attempts, str(error))
         return None
-    delay_ms = min(
-        settings.retry_base_ms * (2 ** (attempts - 1)),
-        settings.retry_max_ms,
+    delay_ms = int(
+        min(
+            settings.retry_base_ms * (2 ** (attempts - 1)),
+            settings.retry_max_ms,
+        )
     )
     logger.warning(
         "event processing failed stream_id=%s attempt=%d/%d retry_in_ms=%d",
@@ -101,7 +133,7 @@ async def _record_failure(
 
 
 async def process_messages(
-    redis: Redis,
+    redis: RedisClientProtocol,
     pool: asyncpg.Pool,
     settings: Settings,
     messages: list[Message],

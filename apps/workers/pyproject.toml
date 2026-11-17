@@ -42,7 +42,7 @@ mypy_path = "../api"
 
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*"]
-disable_error_code = ["import-untyped"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

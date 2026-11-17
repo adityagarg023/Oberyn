@@ -12,9 +12,7 @@ _SENSITIVE_KEY = re.compile(
     re.IGNORECASE,
 )
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
-_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(password|token|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+"
-)
+_SECRET_ASSIGNMENT = re.compile(r"(?i)\b(password|token|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+")
 _QUERY = re.compile(r"([?&](?:token|key|secret|password|signature)=)[^&#\s]+")
 
 

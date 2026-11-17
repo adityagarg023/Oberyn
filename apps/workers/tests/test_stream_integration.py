@@ -11,7 +11,8 @@ import pytest
 from redis.asyncio import Redis
 
 from workers.config import Settings
-from workers.main import _handle_message, process_message
+from workers.main import _prepare_message, process_messages
+from workers.persistence import persist_batch
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 REDIS_URL = os.getenv("TEST_REDIS_URL")
@@ -103,20 +104,30 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
         message_id, delivered_fields = first_batch[0][1][0]
 
         # Simulate a worker crash after the DB commit but before XACK.
-        await process_message(pool, delivered_fields)
+        prepared_event = _prepare_message(delivered_fields)
+        await persist_batch(pool, [prepared_event])
         pending = await redis.xpending(stream, group)
         assert pending["pending"] == 1
 
         reclaimed = await redis.xautoclaim(
-            stream, group, second_consumer, settings.claim_idle_ms, start_id="0-0", count=10
+            stream,
+            group,
+            second_consumer,
+            settings.claim_idle_ms,
+            start_id="0-0",
+            count=10,
         )
         assert len(reclaimed[1]) == 1
         reclaimed_id, reclaimed_fields = reclaimed[1][0]
         assert reclaimed_id == message_id
 
         # Reprocessing must not increment issue counts or create a second raw event.
-        await _handle_message(redis, pool, settings, reclaimed_id, reclaimed_fields)
-
+        await process_messages(
+            redis,
+            pool,
+            settings,
+            [(reclaimed_id, reclaimed_fields)],
+        )
         async with pool.acquire() as connection:
             raw_count = await connection.fetchval(
                 "SELECT count(*) FROM raw_events WHERE project_id=$1 AND event_id=$2",

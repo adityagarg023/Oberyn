@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
-
 from app.contracts.events import EventV1
 from app.fingerprints import generate_fingerprint
 from app.issues import persist_event_and_upsert_issue
