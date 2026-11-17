@@ -9,7 +9,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -21,6 +21,13 @@ from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
 from app.dashboard import router as dashboard_router
 from app.db import engine
+from app.ingestion_limits import (
+    enforce_monthly_quota,
+    enforce_queue_backpressure,
+    enforce_spike_limit,
+    enforce_token_bucket,
+    resolve_project_key,
+)
 
 
 def get_database_engine() -> AsyncEngine:
@@ -38,6 +45,11 @@ def get_pg_pool(request: Request) -> asyncpg.Pool:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     logging.basicConfig(level=settings.log_level)
+    dashboard_origins = {
+        origin.strip()
+        for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")
+        if origin.strip()
+    }
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -63,22 +75,64 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="Oberyn API", version="0.1.0", lifespan=lifespan)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            origin.strip()
-            for origin in os.getenv("DASHBOARD_ORIGINS", "http://localhost:3000").split(",")
-        ],
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=[
-            "Authorization",
-            "Content-Type",
-            "X-Oberyn-Key",
-            "X-Oberyn-Project-Id",
-            "X-Oberyn-SDK",
-        ],
-    )
+
+    async def project_origins(project_id: UUID, pool: asyncpg.Pool, redis: Redis) -> set[str]:
+        cache_key = f"oberyn:cors:{project_id}"
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            values = json.loads(cached)
+            return set(values)
+        values = await pool.fetchval("SELECT cors_origins FROM projects WHERE id=$1", project_id)
+        origins = set(values or [])
+        await redis.set(cache_key, json.dumps(sorted(origins)), ex=60)
+        return origins
+
+    @app.middleware("http")
+    async def cors_and_project_allowlist(request: Request, call_next: Any) -> Response:
+        origin = request.headers.get("origin")
+        path_parts = request.url.path.strip("/").split("/")
+        is_ingest = (
+            len(path_parts) == 3
+            and path_parts[0] == "api"
+            and path_parts[2] == "envelope"
+        )
+        allowed = False
+        if origin:
+            if is_ingest:
+                try:
+                    project_id = UUID(path_parts[1])
+                    allowed = origin in await project_origins(
+                        project_id, request.app.state.pg_pool, request.app.state.redis
+                    )
+                except (ValueError, RedisError, asyncpg.PostgresError):
+                    return Response(status_code=503, content="CORS policy unavailable")
+            else:
+                allowed = origin in dashboard_origins
+
+        if request.method == "OPTIONS" and is_ingest:
+            if not allowed:
+                return Response(status_code=403)
+            response = Response(status_code=204)
+            response.headers["Access-Control-Allow-Origin"] = origin or ""
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = (
+                "Content-Type, X-Oberyn-Key, X-Oberyn-Project-Id, X-Oberyn-SDK"
+            )
+            response.headers["Access-Control-Max-Age"] = "600"
+            response.headers["Vary"] = "Origin"
+            return response
+
+        if origin and is_ingest and not allowed:
+            return Response(status_code=403, content="Origin is not allowed for this project")
+
+        response = await call_next(request)
+        if origin and allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            if not is_ingest:
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
     app.include_router(dashboard_router)
 
     @app.get("/health")
@@ -119,25 +173,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         key_hash = hashlib.sha256(project_key.encode("utf-8")).hexdigest()
         try:
-            project = await pool.fetchrow(
-                """
-                SELECT p.id, p.organization_id
-                FROM projects AS p
-                INNER JOIN project_keys AS pk ON pk.project_id = p.id
-                WHERE p.id = $1 AND pk.key_hash = $2 AND pk.revoked_at IS NULL
-                LIMIT 1
-                """,
-                project_id,
-                key_hash,
-            )
-        except asyncpg.PostgresError as exc:
+            credentials = await resolve_project_key(pool, redis_client, project_id, key_hash)
+        except (RedisError, asyncpg.PostgresError, ValueError) as exc:
+            logging.getLogger("oberyn.ingest").exception("credential lookup failed")
             raise HTTPException(
                 status_code=503, detail="Ingestion authentication unavailable"
             ) from exc
-            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
 
-        if project is None:
+        if credentials is None:
             raise HTTPException(status_code=401, detail="Invalid project credentials")
+
+        try:
+            await enforce_token_bucket(
+                redis_client,
+                key_hash,
+                capacity=settings.ingest_bucket_capacity,
+                refill_per_second=settings.ingest_bucket_refill_per_second,
+            )
+            await enforce_spike_limit(
+                redis_client,
+                project_id,
+                window_seconds=settings.ingest_spike_window_seconds,
+                max_events=settings.ingest_spike_max_events,
+            )
+        except RedisError as exc:
+            raise HTTPException(
+                status_code=503, detail="Ingestion protection unavailable"
+            ) from exc
 
         max_bytes = settings.event_limits.max_payload_bytes
         content_length = request.headers.get("content-length")
@@ -166,25 +228,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
 
+        try:
+            await enforce_monthly_quota(
+                redis_client,
+                credentials.organization_id,
+                monthly_limit=credentials.monthly_event_quota,
+            )
+            await enforce_queue_backpressure(
+                redis_client,
+                settings.event_stream_name,
+                max_length=settings.ingest_max_stream_length,
+            )
+        except RedisError as exc:
+            raise HTTPException(
+                status_code=503, detail="Ingestion protection unavailable"
+            ) from exc
+
         payload_json = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
         try:
             await redis_client.xadd(
                 settings.event_stream_name,
                 {
                     "project_id": str(project_id),
-                    "organization_id": str(project["organization_id"]),
+                    "organization_id": str(credentials.organization_id),
                     "event_id": str(event.event_id),
                     "payload": payload_json,
                 },
             )
         except RedisError as exc:
-            logger = logging.getLogger("oberyn.ingest")
-            logger.exception("failed to enqueue event_id=%s", event.event_id)
+            logging.getLogger("oberyn.ingest").exception(
+                "failed to enqueue event_id=%s", event.event_id
+            )
             raise HTTPException(
                 status_code=503, detail="Ingestion queue unavailable"
             ) from exc
-        except asyncpg.PostgresError as exc:
-            raise HTTPException(status_code=503, detail="Ingestion storage unavailable") from exc
 
         return {"status": "accepted", "event_id": str(event.event_id)}
 
