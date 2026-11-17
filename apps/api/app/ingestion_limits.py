@@ -1,9 +1,4 @@
-"""Redis-backed, cross-process limits for ingestion and dashboard traffic.
-
-All mutating counters are updated by Lua scripts so concurrent API workers share
-one atomic decision. Redis errors are deliberately propagated: callers must fail
-closed rather than silently bypassing abuse controls.
-"""
+"""Atomic Redis-backed limits shared by all Oberyn API processes."""
 from __future__ import annotations
 
 import json
@@ -15,7 +10,6 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from redis.asyncio import Redis
-from redis.exceptions import RedisError
 
 DSN_CACHE_TTL_SECONDS = 60
 
@@ -50,14 +44,27 @@ end
 return {1, 0}
 """
 
-MONTHLY_QUOTA_LUA = """
-local count = redis.call('INCRBY', KEYS[1], ARGV[1])
-if count == tonumber(ARGV[1]) then redis.call('EXPIREAT', KEYS[1], ARGV[2]) end
-if count > tonumber(ARGV[3]) then
-  redis.call('DECRBY', KEYS[1], ARGV[1])
-  return {0, count - tonumber(ARGV[1])}
+ENQUEUE_GUARD_LUA = """
+local stream_length = redis.call('XLEN', KEYS[1])
+if stream_length >= tonumber(ARGV[1]) then
+  return {2, stream_length}
 end
-return {1, count}
+local used = redis.call('INCRBY', KEYS[2], tonumber(ARGV[2]))
+if used == tonumber(ARGV[2]) then
+  redis.call('EXPIREAT', KEYS[2], tonumber(ARGV[3]))
+end
+if used > tonumber(ARGV[4]) then
+  redis.call('DECRBY', KEYS[2], tonumber(ARGV[2]))
+  return {3, used - tonumber(ARGV[2])}
+end
+local id = redis.call(
+  'XADD', KEYS[1], '*',
+  'project_id', ARGV[5],
+  'organization_id', ARGV[6],
+  'event_id', ARGV[7],
+  'payload', ARGV[8]
+)
+return {1, id}
 """
 
 
@@ -74,7 +81,7 @@ def dsn_cache_key(project_id: UUID, key_hash: str) -> str:
 
 
 async def invalidate_dsn_cache(redis: Redis, project_id: UUID, key_hash: str) -> None:
-    """Invalidate a single credential after rotation/revocation."""
+    """Invalidate the exact credential cache entry after key rotation."""
     await redis.delete(dsn_cache_key(project_id, key_hash))
 
 
@@ -169,43 +176,50 @@ async def enforce_spike_limit(
         )
 
 
-async def enforce_monthly_quota(
+async def enqueue_guarded_event(
     redis: Redis,
-    organization_id: UUID,
+    stream_name: str,
     *,
+    project_id: UUID,
+    organization_id: UUID,
+    event_id: UUID,
+    payload: str,
+    max_stream_length: int,
     monthly_limit: int,
-    amount: int = 1,
     now: datetime | None = None,
-) -> None:
+) -> str:
+    """Atomically enforce monthly quota/backpressure and append to the stream."""
     current = now or datetime.now(UTC)
     month_start = current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
     result = await redis.eval(
-        MONTHLY_QUOTA_LUA,
-        1,
+        ENQUEUE_GUARD_LUA,
+        2,
+        stream_name,
         f"oberyn:quota:{organization_id}:{month_start:%Y-%m}",
-        amount,
+        max_stream_length,
+        1,
         math.ceil(next_month.timestamp()),
         monthly_limit,
+        str(project_id),
+        str(organization_id),
+        str(event_id),
+        payload,
     )
-    if int(result[0]) != 1:
-        raise HTTPException(
-            status_code=429,
-            detail="Organization monthly event quota exceeded",
-            headers={"Retry-After": str(max(1, int((next_month - current).total_seconds())))},
-        )
-
-
-async def enforce_queue_backpressure(
-    redis: Redis, stream_name: str, *, max_length: int
-) -> None:
-    length = int(await redis.xlen(stream_name))
-    if length >= max_length:
+    status = int(result[0])
+    if status == 2:
         raise HTTPException(
             status_code=503,
             detail="Ingestion queue is overloaded",
             headers={"Retry-After": "5"},
         )
+    if status == 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Organization monthly event quota exceeded",
+            headers={"Retry-After": str(max(1, int((next_month - current).total_seconds())))},
+        )
+    return str(result[1])
 
 
 async def enforce_dashboard_limit(
