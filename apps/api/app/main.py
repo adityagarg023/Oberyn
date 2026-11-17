@@ -22,9 +22,9 @@ from app.contracts.events import validate_event_payload
 from app.dashboard import router as dashboard_router
 from app.db import engine
 from app.ingestion_limits import (
-    enqueue_guarded_event,
     enforce_spike_limit,
     enforce_token_bucket,
+    enqueue_guarded_event,
     resolve_project_key,
 )
 
