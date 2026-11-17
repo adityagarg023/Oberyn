@@ -39,9 +39,7 @@ async def dashboard_rate_limit(request: Request) -> None:
             max_requests=request.app.state.settings.dashboard_rate_limit_requests,
         )
     except RedisError as exc:
-        raise HTTPException(
-            status_code=503, detail="Dashboard rate limiter unavailable"
-        ) from exc
+        raise HTTPException(status_code=503, detail="Dashboard rate limiter unavailable") from exc
 
 
 router = APIRouter(
