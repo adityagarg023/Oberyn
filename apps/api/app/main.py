@@ -83,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             values = json.loads(cached)
             return set(values)
         values = await pool.fetchval("SELECT cors_origins FROM projects WHERE id=$1", project_id)
+        if isinstance(values, str):
+            values = json.loads(values)
         origins = set(values or [])
         await redis.set(cache_key, json.dumps(sorted(origins)), ex=60)
         return origins
