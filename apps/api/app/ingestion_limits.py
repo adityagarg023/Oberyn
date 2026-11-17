@@ -66,6 +66,7 @@ class ProjectCredentials:
     project_id: UUID
     organization_id: UUID
     cors_origins: tuple[str, ...] = ()
+    monthly_event_quota: int = 1_000_000
 
 
 def dsn_cache_key(project_id: UUID, key_hash: str) -> str:
@@ -88,12 +89,14 @@ async def resolve_project_key(
             project_id=UUID(value["project_id"]),
             organization_id=UUID(value["organization_id"]),
             cors_origins=tuple(value.get("cors_origins", [])),
+            monthly_event_quota=int(value.get("monthly_event_quota", 1_000_000)),
         )
 
     row = await pool.fetchrow(
         """
-        SELECT p.id, p.organization_id, p.cors_origins
+        SELECT p.id, p.organization_id, p.cors_origins, o.monthly_event_quota
         FROM projects AS p
+        INNER JOIN organizations AS o ON o.id = p.organization_id
         INNER JOIN project_keys AS pk ON pk.project_id = p.id
         WHERE p.id = $1 AND pk.key_hash = $2 AND pk.revoked_at IS NULL
         LIMIT 1
@@ -108,6 +111,7 @@ async def resolve_project_key(
         project_id=UUID(str(row["id"])),
         organization_id=UUID(str(row["organization_id"])),
         cors_origins=tuple(row.get("cors_origins") or []),
+        monthly_event_quota=int(row["monthly_event_quota"]),
     )
     await redis.set(
         cache_key,
@@ -116,6 +120,7 @@ async def resolve_project_key(
                 "project_id": str(credentials.project_id),
                 "organization_id": str(credentials.organization_id),
                 "cors_origins": credentials.cors_origins,
+                "monthly_event_quota": credentials.monthly_event_quota,
             }
         ),
         ex=DSN_CACHE_TTL_SECONDS,
