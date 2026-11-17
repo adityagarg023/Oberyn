@@ -12,6 +12,7 @@ import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -22,7 +23,7 @@ from redis.exceptions import RedisError
 
 from app.ingestion_limits import enforce_dashboard_limit, invalidate_dsn_cache
 from jwt import PyJWKClient
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 async def dashboard_rate_limit(request: Request) -> None:
     """Apply a shared per-identity dashboard API limit across API processes."""
@@ -124,6 +125,26 @@ class ProjectInput(BaseModel):
 
 class ProjectCorsInput(BaseModel):
     origins: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("origins")
+    @classmethod
+    def validate_origins(cls, origins: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for value in origins:
+            origin = value.strip().rstrip("/")
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("Each CORS entry must be an absolute HTTP(S) origin")
+            normalized.append(origin)
+        return sorted(set(normalized))
 
 
 class IssueStatusInput(BaseModel):
@@ -352,10 +373,7 @@ async def update_project_cors(
 ) -> dict[str, Any]:
     member = await membership(db, org_id, user)
     require_admin(member, "update project CORS settings")
-    origins = sorted({origin.strip().rstrip("/") for origin in body.origins if origin.strip()})
-    if any(not origin.startswith(("https://", "http://localhost", "http://127.0.0.1"))
-           for origin in origins):
-        raise HTTPException(status_code=422, detail="CORS origins must be absolute HTTP(S) origins")
+    origins = body.origins
     row = await db.fetchrow(
         "UPDATE projects SET cors_origins=$3::jsonb "
         "WHERE id=$1 AND organization_id=$2 RETURNING id,cors_origins",
