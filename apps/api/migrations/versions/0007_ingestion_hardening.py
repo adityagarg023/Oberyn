@@ -2,6 +2,7 @@
 
 Revision ID: 0007_ingestion_hardening
 """
+
 from alembic import op
 
 revision = "0007_ingestion_hardening"
