@@ -16,20 +16,24 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import asyncpg
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 import httpx
 import jwt
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from jwt import PyJWKClient
+from pydantic import BaseModel, Field, field_validator
 from redis.exceptions import RedisError
 
 from app.ingestion_limits import enforce_dashboard_limit, invalidate_dsn_cache
-from jwt import PyJWKClient
-from pydantic import BaseModel, Field, field_validator
 
 async def dashboard_rate_limit(request: Request) -> None:
     """Apply a shared per-identity dashboard API limit across API processes."""
     redis = request.app.state.redis
     authorization = request.headers.get("authorization", "")
-    identity = authorization if authorization else (request.client.host if request.client else "unknown")
+    identity = (
+        authorization
+        if authorization
+        else (request.client.host if request.client else "unknown")
+    )
     identity_hash = hashlib.sha256(identity.encode()).hexdigest()
     try:
         await enforce_dashboard_limit(
@@ -39,7 +43,9 @@ async def dashboard_rate_limit(request: Request) -> None:
             max_requests=request.app.state.settings.dashboard_rate_limit_requests,
         )
     except RedisError as exc:
-        raise HTTPException(status_code=503, detail="Dashboard rate limiter unavailable") from exc
+        raise HTTPException(
+            status_code=503, detail="Dashboard rate limiter unavailable"
+        ) from exc
 
 
 router = APIRouter(
