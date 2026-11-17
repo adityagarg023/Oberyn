@@ -22,8 +22,7 @@ from app.contracts.events import validate_event_payload
 from app.dashboard import router as dashboard_router
 from app.db import engine
 from app.ingestion_limits import (
-    enforce_monthly_quota,
-    enforce_queue_backpressure,
+    enqueue_guarded_event,
     enforce_spike_limit,
     enforce_token_bucket,
     resolve_project_key,
@@ -75,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="Oberyn API", version="0.1.0", lifespan=lifespan)
+    app.state.settings = settings
 
     async def project_origins(project_id: UUID, pool: asyncpg.Pool, redis: Redis) -> set[str]:
         cache_key = f"oberyn:cors:{project_id}"
@@ -229,31 +229,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
 
         try:
-            await enforce_monthly_quota(
+            payload_json = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
+            await enqueue_guarded_event(
                 redis_client,
-                credentials.organization_id,
+                settings.event_stream_name,
+                project_id=project_id,
+                organization_id=credentials.organization_id,
+                event_id=event.event_id,
+                payload=payload_json,
+                max_stream_length=settings.ingest_max_stream_length,
                 monthly_limit=credentials.monthly_event_quota,
-            )
-            await enforce_queue_backpressure(
-                redis_client,
-                settings.event_stream_name,
-                max_length=settings.ingest_max_stream_length,
-            )
-        except RedisError as exc:
-            raise HTTPException(
-                status_code=503, detail="Ingestion protection unavailable"
-            ) from exc
-
-        payload_json = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
-        try:
-            await redis_client.xadd(
-                settings.event_stream_name,
-                {
-                    "project_id": str(project_id),
-                    "organization_id": str(credentials.organization_id),
-                    "event_id": str(event.event_id),
-                    "payload": payload_json,
-                },
             )
         except RedisError as exc:
             logging.getLogger("oberyn.ingest").exception(
