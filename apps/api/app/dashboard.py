@@ -16,14 +16,15 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 import httpx
 import jwt
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field, field_validator
 from redis.exceptions import RedisError
 
 from app.ingestion_limits import enforce_dashboard_limit, invalidate_dsn_cache
+
 
 async def dashboard_rate_limit(request: Request) -> None:
     """Apply a shared per-identity dashboard API limit across API processes."""
