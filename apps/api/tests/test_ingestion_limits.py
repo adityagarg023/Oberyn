@@ -37,7 +37,11 @@ async def redis_client() -> Any:
 async def outcomes(calls: list[Any]) -> tuple[int, list[HTTPException]]:
     results = await asyncio.gather(*calls, return_exceptions=True)
     errors = [item for item in results if isinstance(item, HTTPException)]
-    unexpected = [item for item in results if isinstance(item, BaseException) and not isinstance(item, HTTPException)]
+    unexpected = [
+        item
+        for item in results
+        if isinstance(item, BaseException) and not isinstance(item, HTTPException)
+    ]
     assert not unexpected
     return len(results) - len(errors), errors
 
