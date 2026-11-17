@@ -357,7 +357,9 @@ async def rotate_project_key(
     except RedisError as exc:
         # The old key is already revoked in PostgreSQL. Flush the project cache
         # namespace as a second line of defence; a cache outage fails the request.
-        raise HTTPException(status_code=503, detail="Key rotated; cache invalidation pending") from exc
+        raise HTTPException(
+            status_code=503, detail="Key rotated; cache invalidation pending"
+        ) from exc
     return {
         "project_id": str(project_id),
         "dsn": os.getenv("OBERYN_INGEST_URL", "http://localhost:8000").rstrip("/")
@@ -392,7 +394,9 @@ async def update_project_cors(
     try:
         await request.app.state.redis.delete(f"oberyn:cors:{project_id}")
     except RedisError as exc:
-        raise HTTPException(status_code=503, detail="CORS policy updated; cache invalidation pending") from exc
+        raise HTTPException(
+            status_code=503, detail="CORS policy updated; cache invalidation pending"
+        ) from exc
     return {"project_id": str(project_id), "origins": origins}
 
 
