@@ -616,7 +616,8 @@ async def merge_issues(
                    WHERE target.id=$1 AND source.id=$2
                    RETURNING target.id,target.title,target.status,target.event_count,"
                    "target.user_count,
-                             target.first_seen,target.last_seen,target.first_release,target.last_release""",
+                             target.first_seen,target.last_seen,target.first_release,"
+                   "target.last_release""",
                 target["id"],
                 source["id"],
             )
