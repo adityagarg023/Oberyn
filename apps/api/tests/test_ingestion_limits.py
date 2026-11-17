@@ -174,7 +174,7 @@ async def test_dsn_cache_and_rotation_invalidation(redis_client: Redis) -> None:
             return {
                 "id": project_id,
                 "organization_id": organization_id,
-                "cors_origins": ["https://example.com"],
+                "cors_origins": '["https://example.com"]',
                 "monthly_event_quota": 5000,
             }
 
@@ -186,6 +186,7 @@ async def test_dsn_cache_and_rotation_invalidation(redis_client: Redis) -> None:
     assert 0 < await redis_client.ttl(dsn_cache_key(project_id, key_hash)) <= 60
     assert first is not None
     assert first.monthly_event_quota == 5000
+    assert first.cors_origins == ("https://example.com",)
 
     pool.revoked = True
     await invalidate_dsn_cache(redis_client, project_id, key_hash)
