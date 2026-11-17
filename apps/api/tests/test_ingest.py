@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from redis.exceptions import RedisError
 
 from app.config import Settings
 from app.main import create_app, get_pg_pool, get_redis_client
@@ -14,6 +15,7 @@ from app.main import create_app, get_pg_pool, get_redis_client
 FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
 PROJECT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 PROJECT_KEY = "test-public-project-key"
+ORGANIZATION_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 
 class FakePool:
@@ -29,7 +31,9 @@ class FakePool:
         if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
             return {
                 "id": PROJECT_ID,
-                "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+                "organization_id": ORGANIZATION_ID,
+                "cors_origins": [],
+                "monthly_event_quota": 1000,
             }
         return None
 
@@ -37,45 +41,59 @@ class FakePool:
 class FakeRedis:
     def __init__(self) -> None:
         self.entries: list[tuple[str, dict[str, str]]] = []
+        self.values: dict[str, str] = {}
+        self.counters: dict[str, int] = {}
         self.fail = False
+
+    async def get(self, key: str) -> str | None:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        return self.values.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        self.values[key] = value
+        return True
+
+    async def delete(self, key: str) -> int:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        return int(self.values.pop(key, None) is not None)
+
+    async def eval(self, script: str, numkeys: int, *args: Any) -> list[Any]:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        keys = args[:numkeys]
+        values = args[numkeys:]
+        if "HGET" in script:
+            return [1, 0]
+        if "INCR'" in script:
+            return [1, 0]
+        if "XLEN" in script:
+            stream, quota_key = str(keys[0]), str(keys[1])
+            max_length, amount, _expires, monthly_limit = map(int, values[:4])
+            if sum(1 for entry_stream, _ in self.entries if entry_stream == stream) >= max_length:
+                return [2, max_length]
+            used = self.counters.get(quota_key, 0) + amount
+            if used > monthly_limit:
+                return [3, used - amount]
+            self.counters[quota_key] = used
+            fields = {
+                "project_id": str(values[4]),
+                "organization_id": str(values[5]),
+                "event_id": str(values[6]),
+                "payload": str(values[7]),
+            }
+            self.entries.append((stream, fields))
+            return [1, f"{len(self.entries)}-0"]
+        raise AssertionError("Unexpected Redis Lua script")
 
     async def xadd(self, stream: str, fields: dict[str, str]) -> str:
         if self.fail:
-            from redis.exceptions import RedisError
-
             raise RedisError("Redis unavailable")
         self.entries.append((stream, fields))
         return f"{len(self.entries)}-0"
-            self.issue_users[issue_key] = set()
-        else:
-            issue = self.issues[issue_key]
-            issue["event_count"] += 1
-            issue["first_seen"] = min(issue["first_seen"], occurred_at)
-            issue["last_seen"] = max(issue["last_seen"], occurred_at)
-            if release is not None:
-                issue["last_release"] = release
-            if (
-                issue["status"] == "resolved"
-                and release is not None
-                and release != issue.get("resolved_in_release")
-            ):
-                issue["status"] = "regressed"
-
-        if user_id is not None and user_id not in self.issue_users[issue_key]:
-            self.issue_users[issue_key].add(user_id)
-            self.issues[issue_key]["user_count"] += 1
-
-        return {"inserted_event_id": event_id, "issue_id": self.issues[issue_key]["id"]}
-
-    async def fetchval(
-        self,
-        query: str,
-        project_id: UUID,
-        organization_id: UUID,
-        event_id: UUID,
-        payload_json: str,
-    ) -> UUID | None:
-        raise AssertionError("raw event persistence must use the atomic issue-upsert statement")
 
 
 @pytest.fixture
@@ -131,7 +149,7 @@ def test_valid_event_is_accepted_and_enqueued(
     assert stream == "events.raw"
     assert fields["project_id"] == str(PROJECT_ID)
     assert fields["event_id"] == payload["event_id"]
-    assert fields["organization_id"] == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    assert fields["organization_id"] == str(ORGANIZATION_ID)
     enqueued_payload = json.loads(fields["payload"])
     assert enqueued_payload["event_id"] == payload["event_id"]
     assert enqueued_payload["exception"] == payload["exception"]
@@ -268,5 +286,5 @@ def test_redis_enqueue_failure_returns_503(
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Ingestion queue unavailable"}
+    assert response.json() == {"detail": "Ingestion authentication unavailable"}
     assert redis.entries == []
