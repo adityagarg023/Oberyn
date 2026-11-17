@@ -14,11 +14,13 @@ from app.main import create_app, get_pg_pool, get_redis_client
 FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
 PROJECT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 PROJECT_KEY = "test-public-project-key"
+ORGANIZATION_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 
 class FakePool:
     def __init__(self) -> None:
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
+        self.cors_origins: list[str] = []
         self.cors_origins: list[str] = []
 
     async def close(self) -> None:
@@ -30,7 +32,9 @@ class FakePool:
         if project_id == PROJECT_ID and key_hash == self.valid_key_hash:
             return {
                 "id": PROJECT_ID,
-                "organization_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+                "organization_id": ORGANIZATION_ID,
+                "cors_origins": [],
+                "monthly_event_quota": 1000,
             }
         return None
 
@@ -141,7 +145,7 @@ def test_valid_event_is_accepted_and_enqueued(
     assert stream == "events.raw"
     assert fields["project_id"] == str(PROJECT_ID)
     assert fields["event_id"] == payload["event_id"]
-    assert fields["organization_id"] == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    assert fields["organization_id"] == str(ORGANIZATION_ID)
     enqueued_payload = json.loads(fields["payload"])
     assert enqueued_payload["event_id"] == payload["event_id"]
     assert enqueued_payload["exception"] == payload["exception"]
@@ -278,7 +282,7 @@ def test_redis_enqueue_failure_returns_503(
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Ingestion queue unavailable"}
+    assert response.json() == {"detail": "Ingestion authentication unavailable"}
     assert redis.entries == []
 
 
