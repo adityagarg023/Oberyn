@@ -14,6 +14,7 @@ from app.ingestion_limits import (
     enforce_dashboard_limit,
     enforce_spike_limit,
     enforce_token_bucket,
+    dsn_cache_key,
     enqueue_guarded_event,
     invalidate_dsn_cache,
     resolve_project_key,
@@ -182,6 +183,7 @@ async def test_dsn_cache_and_rotation_invalidation(redis_client: Redis) -> None:
     second = await resolve_project_key(pool, redis_client, project_id, key_hash)
     assert first == second
     assert pool.calls == 1
+    assert 0 < await redis_client.ttl(dsn_cache_key(project_id, key_hash)) <= 60
     assert first is not None
     assert first.monthly_event_quota == 5000
 
