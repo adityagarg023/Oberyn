@@ -138,8 +138,16 @@ async def test_real_stream_delivery_and_postgres_persistence_are_idempotent() ->
                 "SELECT event_count FROM issues WHERE project_id=$1",
                 project_id,
             )
+            stored_event = await connection.fetchrow(
+                "SELECT release,environment FROM events WHERE project_id=$1 AND id=$2",
+                project_id,
+                event_id,
+            )
         assert raw_count == 1
         assert issue_count == 1
+        assert stored_event is not None
+        assert stored_event["release"] == "web@1.2.3"
+        assert stored_event["environment"] == "production"
         assert (await redis.xpending(stream, group))["pending"] == 0
     finally:
         await redis.delete(stream)
