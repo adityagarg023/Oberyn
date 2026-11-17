@@ -19,6 +19,7 @@ PROJECT_KEY = "test-public-project-key"
 class FakePool:
     def __init__(self) -> None:
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
+        self.cors_origins: list[str] = []
 
     async def close(self) -> None:
         return None
@@ -33,11 +34,20 @@ class FakePool:
             }
         return None
 
+    async def fetchval(self, query: str, project_id: UUID) -> list[str]:
+        assert "cors_origins" in query
+        return self.cors_origins
+
 
 class FakeRedis:
     def __init__(self) -> None:
         self.entries: list[tuple[str, dict[str, str]]] = []
         self.fail = False
+        self.bucket_reject = False
+        self.spike_reject = False
+        self.quota_reject = False
+        self.queue_reject = False
+        self.dashboard_reject = False
 
     async def xadd(self, stream: str, fields: dict[str, str]) -> str:
         if self.fail:
