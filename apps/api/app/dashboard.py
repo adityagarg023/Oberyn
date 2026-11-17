@@ -28,12 +28,7 @@ from app.ingestion_limits import enforce_dashboard_limit, invalidate_dsn_cache
 async def dashboard_rate_limit(request: Request) -> None:
     """Apply a shared per-identity dashboard API limit across API processes."""
     redis = request.app.state.redis
-    authorization = request.headers.get("authorization", "")
-    identity = (
-        authorization
-        if authorization
-        else (request.client.host if request.client else "unknown")
-    )
+    identity = request.client.host if request.client else "unknown"
     identity_hash = hashlib.sha256(identity.encode()).hexdigest()
     try:
         await enforce_dashboard_limit(
@@ -328,6 +323,7 @@ async def rotate_project_key(
     require_admin(member, "rotate project keys")
     secret = "ob_live_" + secrets.token_urlsafe(32)
     new_hash = hashlib.sha256(secret.encode()).hexdigest()
+    redis = request.app.state.redis
     async with db.acquire() as conn:
         async with conn.transaction():
             project = await conn.fetchrow(
@@ -338,8 +334,21 @@ async def rotate_project_key(
             if project is None:
                 raise HTTPException(status_code=404, detail="Project not found")
             old_hashes = await conn.fetch(
+                "SELECT key_hash FROM project_keys "
+                "WHERE project_id=$1 AND revoked_at IS NULL FOR UPDATE",
+                project_id,
+            )
+            try:
+                for row in old_hashes:
+                    await invalidate_dsn_cache(redis, project_id, row["key_hash"])
+            except RedisError as exc:
+                # Roll back the SQL transaction if cache invalidation cannot be guaranteed.
+                raise HTTPException(
+                    status_code=503, detail="Key rotation unavailable; retry safely"
+                ) from exc
+            await conn.execute(
                 "UPDATE project_keys SET revoked_at=now() "
-                "WHERE project_id=$1 AND revoked_at IS NULL RETURNING key_hash",
+                "WHERE project_id=$1 AND revoked_at IS NULL",
                 project_id,
             )
             await conn.execute(
@@ -350,16 +359,6 @@ async def rotate_project_key(
                 org_id,
                 new_hash,
             )
-    redis = request.app.state.redis
-    try:
-        for row in old_hashes:
-            await invalidate_dsn_cache(redis, project_id, row["key_hash"])
-    except RedisError as exc:
-        # The old key is already revoked in PostgreSQL. Flush the project cache
-        # namespace as a second line of defence; a cache outage fails the request.
-        raise HTTPException(
-            status_code=503, detail="Key rotated; cache invalidation pending"
-        ) from exc
     return {
         "project_id": str(project_id),
         "dsn": os.getenv("OBERYN_INGEST_URL", "http://localhost:8000").rstrip("/")
@@ -382,6 +381,10 @@ async def update_project_cors(
     member = await membership(db, org_id, user)
     require_admin(member, "update project CORS settings")
     origins = body.origins
+    try:
+        await request.app.state.redis.delete(f"oberyn:cors:{project_id}")
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="CORS policy update unavailable") from exc
     row = await db.fetchrow(
         "UPDATE projects SET cors_origins=$3::jsonb "
         "WHERE id=$1 AND organization_id=$2 RETURNING id,cors_origins",
@@ -391,12 +394,6 @@ async def update_project_cors(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    try:
-        await request.app.state.redis.delete(f"oberyn:cors:{project_id}")
-    except RedisError as exc:
-        raise HTTPException(
-            status_code=503, detail="CORS policy updated; cache invalidation pending"
-        ) from exc
     return {"project_id": str(project_id), "origins": origins}
 
 
