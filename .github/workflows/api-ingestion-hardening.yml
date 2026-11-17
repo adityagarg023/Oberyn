@@ -39,10 +39,10 @@ jobs:
         run: python -m pip install -e "apps/api[dev]"
       - name: Lint API
         working-directory: apps/api
-        run: ruff check app tests migrations/versions/0002_ingestion_hardening.py
+        run: ruff check app tests migrations/versions/0007_ingestion_hardening.py
       - name: Check formatting
         working-directory: apps/api
-        run: ruff format --check app tests migrations/versions/0002_ingestion_hardening.py
+        run: ruff format --check app tests migrations/versions/0007_ingestion_hardening.py
       - name: Run ingestion and Redis integration tests
         working-directory: apps/api
         run: pytest -q tests/test_ingest.py tests/test_ingestion_limits.py
