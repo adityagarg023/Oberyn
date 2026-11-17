@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -9,7 +10,7 @@ import pytest
 
 from app.issues import persist_event_and_upsert_issue
 
-DATABASE_URL = __import__("os").getenv("TEST_DATABASE_URL")
+DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,
     reason="Set TEST_DATABASE_URL for PostgreSQL release-management tests",
