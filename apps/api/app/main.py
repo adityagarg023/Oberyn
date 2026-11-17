@@ -122,6 +122,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers["Vary"] = "Origin"
             return response
 
+        if request.method == "OPTIONS" and origin and not is_ingest:
+            if not allowed:
+                return Response(status_code=403)
+            response = Response(status_code=204)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+            response.headers["Access-Control-Max-Age"] = "600"
+            response.headers["Vary"] = "Origin"
+            return response
+
         if origin and is_ingest and not allowed:
             return Response(status_code=403, content="Origin is not allowed for this project")
 
