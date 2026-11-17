@@ -17,7 +17,7 @@ WITH inserted AS (
 release_upsert AS (
     INSERT INTO releases (id, project_id, organization_id, version)
     SELECT gen_random_uuid(), $1, $2, $9
-    WHERE EXISTS (SELECT 1 FROM inserted) AND $9::text IS NOT NULL
+    WHERE EXISTS (SELECT 1 FROM inserted) AND $9::varchar IS NOT NULL
     ON CONFLICT (project_id, version) DO UPDATE
     SET version = EXCLUDED.version
     RETURNING version, created_at
@@ -74,7 +74,7 @@ new_user AS (
     INSERT INTO issue_users (issue_id, project_id, user_id)
     SELECT issue.id, issue.project_id, $8
     FROM issue
-    WHERE $8::text IS NOT NULL
+    WHERE $8::varchar IS NOT NULL
     ON CONFLICT (issue_id, user_id) DO NOTHING
     RETURNING issue_id
 )
