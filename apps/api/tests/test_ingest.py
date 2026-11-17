@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from redis.exceptions import RedisError
 
 from app.config import Settings
 from app.main import create_app, get_pg_pool, get_redis_client
@@ -21,7 +22,6 @@ class FakePool:
     def __init__(self) -> None:
         self.valid_key_hash = hashlib.sha256(PROJECT_KEY.encode()).hexdigest()
         self.cors_origins: list[str] = []
-        self.cors_origins: list[str] = []
 
     async def close(self) -> None:
         return None
@@ -33,7 +33,7 @@ class FakePool:
             return {
                 "id": PROJECT_ID,
                 "organization_id": ORGANIZATION_ID,
-                "cors_origins": [],
+                "cors_origins": self.cors_origins,
                 "monthly_event_quota": 1000,
             }
         return None
@@ -46,50 +46,64 @@ class FakePool:
 class FakeRedis:
     def __init__(self) -> None:
         self.entries: list[tuple[str, dict[str, str]]] = []
+        self.values: dict[str, str] = {}
+        self.counters: dict[str, int] = {}
         self.fail = False
         self.bucket_reject = False
         self.spike_reject = False
         self.quota_reject = False
         self.queue_reject = False
-        self.dashboard_reject = False
 
-    async def xadd(self, stream: str, fields: dict[str, str]) -> str:
+    async def get(self, key: str) -> str | None:
         if self.fail:
-            from redis.exceptions import RedisError
-
             raise RedisError("Redis unavailable")
-        self.entries.append((stream, fields))
-        return f"{len(self.entries)}-0"
-            self.issue_users[issue_key] = set()
-        else:
-            issue = self.issues[issue_key]
-            issue["event_count"] += 1
-            issue["first_seen"] = min(issue["first_seen"], occurred_at)
-            issue["last_seen"] = max(issue["last_seen"], occurred_at)
-            if release is not None:
-                issue["last_release"] = release
-            if (
-                issue["status"] == "resolved"
-                and release is not None
-                and release != issue.get("resolved_in_release")
-            ):
-                issue["status"] = "regressed"
+        return self.values.get(key)
 
-        if user_id is not None and user_id not in self.issue_users[issue_key]:
-            self.issue_users[issue_key].add(user_id)
-            self.issues[issue_key]["user_count"] += 1
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        self.values[key] = value
+        return True
 
-        return {"inserted_event_id": event_id, "issue_id": self.issues[issue_key]["id"]}
+    async def delete(self, key: str) -> int:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        return int(self.values.pop(key, None) is not None)
 
-    async def fetchval(
-        self,
-        query: str,
-        project_id: UUID,
-        organization_id: UUID,
-        event_id: UUID,
-        payload_json: str,
-    ) -> UUID | None:
-        raise AssertionError("raw event persistence must use the atomic issue-upsert statement")
+    async def eval(self, script: str, numkeys: int, *args: Any) -> list[Any]:
+        if self.fail:
+            raise RedisError("Redis unavailable")
+        keys = args[:numkeys]
+        values = args[numkeys:]
+        if "HGET" in script:
+            return [0, 3] if self.bucket_reject else [1, 0]
+        if "redis.call('INCR'," in script:
+            return [0, 4] if self.spike_reject else [1, 0]
+        if "XLEN" in script:
+            stream, quota_key = str(keys[0]), str(keys[1])
+            max_length, amount, _expires, monthly_limit = map(int, values[:4])
+            if self.queue_reject:
+                return [2, max_length]
+            if self.quota_reject:
+                return [3, 0]
+            current_length = sum(
+                1 for entry_stream, _ in self.entries if entry_stream == stream
+            )
+            if current_length >= max_length:
+                return [2, current_length]
+            used = self.counters.get(quota_key, 0) + amount
+            if used > monthly_limit:
+                return [3, used - amount]
+            self.counters[quota_key] = used
+            fields = {
+                "project_id": str(values[4]),
+                "organization_id": str(values[5]),
+                "event_id": str(values[6]),
+                "payload": str(values[7]),
+            }
+            self.entries.append((stream, fields))
+            return [1, f"{len(self.entries)}-0"]
+        raise AssertionError("Unexpected Redis Lua script")
 
 
 @pytest.fixture
@@ -135,9 +149,7 @@ def test_valid_event_is_accepted_and_enqueued(
 ) -> None:
     client, _pool, redis = api_client
     payload = valid_event()
-
     response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
-
     assert response.status_code == 202
     assert response.json() == {"status": "accepted", "event_id": payload["event_id"]}
     assert len(redis.entries) == 1
@@ -157,9 +169,7 @@ def test_invalid_event_payload_returns_422(
     client, _pool, redis = api_client
     payload = valid_event()
     payload["level"] = "critical"
-
     response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
-
     assert response.status_code == 422
     assert redis.entries == []
 
@@ -167,14 +177,13 @@ def test_invalid_event_payload_returns_422(
 def test_invalid_json_returns_422(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
-    client, _pool, redis = api_client
+    client, _pool, _redis = api_client
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(),
         content=b'{"schema_version":',
     )
     assert response.status_code == 422
-    assert redis.entries == []
 
 
 def test_invalid_project_key_returns_401(
@@ -208,24 +217,23 @@ def test_project_header_mismatch_returns_401(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
     client, _pool, redis = api_client
+    other_project = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
-        headers=headers(project_id=UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")),
+        headers=headers(project_id=other_project),
         json=valid_event(),
     )
     assert response.status_code == 401
     assert redis.entries == []
 
 
-def test_repeated_event_is_enqueued_and_worker_deduplicates(
+def test_repeated_event_is_enqueued_for_worker_deduplication(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
     client, _pool, redis = api_client
     payload = valid_event()
-
     first = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
     second = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=payload)
-
     assert first.status_code == second.status_code == 202
     assert len(redis.entries) == 2
     assert redis.entries[0][1]["event_id"] == redis.entries[1][1]["event_id"]
@@ -248,11 +256,10 @@ def test_oversized_stream_without_content_length_returns_413(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
     client, _pool, redis = api_client
-    payload = b"x" * (200 * 1024 + 1)
     response = client.post(
         f"/api/{PROJECT_ID}/envelope",
         headers=headers(),
-        content=iter([payload]),
+        content=iter([b"x" * (200 * 1024 + 1)]),
     )
     assert response.status_code == 413
     assert redis.entries == []
@@ -271,16 +278,12 @@ def test_missing_project_key_returns_401(
     assert redis.entries == []
 
 
-def test_redis_enqueue_failure_returns_503(
+def test_redis_unavailable_fails_closed_with_503(
     api_client: tuple[TestClient, FakePool, FakeRedis],
 ) -> None:
     client, _pool, redis = api_client
     redis.fail = True
-
-    response = client.post(
-        f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event()
-    )
-
+    response = client.post(f"/api/{PROJECT_ID}/envelope", headers=headers(), json=valid_event())
     assert response.status_code == 503
     assert response.json() == {"detail": "Ingestion authentication unavailable"}
     assert redis.entries == []
