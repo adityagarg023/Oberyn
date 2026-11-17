@@ -3,69 +3,173 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from collections.abc import Awaitable, Sequence
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
+from app.contracts.events import EventV1
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
-from app.contracts.events import EventV1
-from app.fingerprints import generate_fingerprint
-from app.issues import persist_event_and_upsert_issue
 from workers.config import Settings, load_settings
+from workers.persistence import persist_batch
+from workers.processing import normalize_event, scrub_raw_payload, scrub_text
 
 logger = logging.getLogger("oberyn.workers")
+Message = tuple[str, dict[str, str]]
 
 
-async def process_message(pool: asyncpg.Pool, fields: dict[str, str]) -> None:
-    """Persist one stream event; return only after the PostgreSQL transaction commits."""
-    project_id = fields["project_id"]
-    organization_id = fields["organization_id"]
-    event_id = fields["event_id"]
+class RedisPipelineProtocol(Protocol):
+    def xack(self, stream: str, group: str, *ids: str) -> Any: ...
+
+    def hdel(self, key: str, *ids: str) -> Any: ...
+
+    def xadd(self, stream: str, fields: dict[str, str]) -> Any: ...
+
+    async def execute(self) -> list[Any]: ...
+
+
+class RedisClientProtocol(Protocol):
+    def pipeline(self, transaction: bool = True) -> RedisPipelineProtocol: ...
+
+    async def hincrby(self, key: str, message_id: str, amount: int) -> int: ...
+
+
+def _prepare_message(fields: dict[str, str]) -> tuple[UUID, UUID, EventV1]:
+    project_id = UUID(fields["project_id"])
+    organization_id = UUID(fields["organization_id"])
     event = EventV1.model_validate_json(fields["payload"])
-    if str(event.event_id) != event_id:
+    if str(event.event_id) != fields["event_id"]:
         raise ValueError("stream event_id does not match payload event_id")
+    return project_id, organization_id, normalize_event(event)
 
-    await persist_event_and_upsert_issue(
-        pool,
-        project_id=UUID(project_id),
-        organization_id=UUID(organization_id),
-        event_id=event.event_id,
-        payload_json=event.model_dump_json(),
-        fingerprint=generate_fingerprint(event),
-        title=f"{event.exception.type}: {event.exception.value}",
-        occurred_at=event.timestamp,
-        user_id=event.user.id if event.user is not None else None,
-        release=event.release,
+
+async def _ack(redis: RedisClientProtocol, settings: Settings, messages: Sequence[Message]) -> None:
+    if not messages:
+        return
+    pipeline = redis.pipeline(transaction=True)
+    pipeline.xack(
+        settings.event_stream_name,
+        settings.consumer_group,
+        *(message_id for message_id, _ in messages),
     )
+    pipeline.hdel(
+        settings.failure_hash_name,
+        *(message_id for message_id, _ in messages),
+    )
+    await pipeline.execute()
 
 
-async def _handle_message(
-    redis: Redis,
-    pool: asyncpg.Pool,
+async def _dead_letter(
+    redis: RedisClientProtocol,
     settings: Settings,
     message_id: str,
     fields: dict[str, str],
+    attempts: int,
+    error: str,
 ) -> None:
-    try:
-        await process_message(pool, fields)
-    except Exception:
-        logger.exception("event processing failed stream_id=%s; leaving pending", message_id)
-        return
+    # XADD and XACK share a Redis transaction: never acknowledge before the
+    # dead-letter copy is durably added to the destination stream.
+    pipeline = redis.pipeline(transaction=True)
 
-    # The DB helper's transaction has committed before this acknowledgement.
-    await redis.xack(settings.event_stream_name, settings.consumer_group, message_id)
-    logger.debug("event processed and acknowledged stream_id=%s", message_id)
+    dead_letter_fields = dict(fields)
+    if "payload" in dead_letter_fields:
+        dead_letter_fields["payload"] = scrub_raw_payload(dead_letter_fields["payload"])
+
+    redis_fields: dict[str, str] = {}
+
+    for key, value in dead_letter_fields.items():
+        redis_fields[key] = value
+
+    redis_fields["source_stream"] = settings.event_stream_name
+    redis_fields["source_id"] = message_id
+    redis_fields["failure_attempts"] = str(attempts)
+    redis_fields["failure_reason"] = scrub_text(error)[:2000]
+
+    pipeline.xadd(settings.dead_letter_stream_name, redis_fields)
+    pipeline.xack(settings.event_stream_name, settings.consumer_group, message_id)
+    pipeline.hdel(settings.failure_hash_name, message_id)
+
+    await pipeline.execute()
+
+    logger.error(
+        "event moved to dead-letter stream stream_id=%s attempts=%d",
+        message_id,
+        attempts,
+    )
 
 
-async def _process_messages(
-    redis: Redis,
+async def _record_failure(
+    redis: RedisClientProtocol,
+    settings: Settings,
+    message: Message,
+    error: Exception,
+) -> int | None:
+    message_id, fields = message
+    increment_result = cast(
+        Awaitable[int],
+        redis.hincrby(settings.failure_hash_name, message_id, 1),
+    )
+    attempts = await increment_result
+    if attempts >= settings.max_attempts:
+        await _dead_letter(redis, settings, message_id, fields, attempts, str(error))
+        return None
+    delay_ms = int(
+        min(
+            settings.retry_base_ms * (2 ** (attempts - 1)),
+            settings.retry_max_ms,
+        )
+    )
+    logger.warning(
+        "event processing failed stream_id=%s attempt=%d/%d retry_in_ms=%d",
+        message_id,
+        attempts,
+        settings.max_attempts,
+        delay_ms,
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    return delay_ms
+
+
+async def process_messages(
+    redis: RedisClientProtocol,
     pool: asyncpg.Pool,
     settings: Settings,
-    messages: list[tuple[str, dict[str, str]]],
+    messages: list[Message],
 ) -> None:
-    for message_id, fields in messages:
-        await _handle_message(redis, pool, settings, message_id, fields)
+    """Process one bounded batch; database commit always precedes XACK."""
+    prepared: list[tuple[Message, tuple[UUID, UUID, EventV1]]] = []
+    delays: list[int] = []
+
+    for message in messages:
+        try:
+            prepared.append((message, _prepare_message(message[1])))
+        except Exception as error:
+            delay = await _record_failure(redis, settings, message, error)
+            if delay is not None:
+                delays.append(delay)
+
+    if not prepared:
+        if delays:
+            await asyncio.sleep(max(delays) / 1000)
+        return
+
+    try:
+        await persist_batch(pool, [item[1] for item in prepared])
+    except Exception as error:
+        for message, _event in prepared:
+            delay = await _record_failure(redis, settings, message, error)
+            if delay is not None:
+                delays.append(delay)
+        if delays:
+            await asyncio.sleep(max(delays) / 1000)
+        return
+
+    # A crash between commit and this call is safe: replay is deduplicated by
+    # raw_events(project_id, event_id), so issue counters are not incremented.
+    await _ack(redis, settings, [item[0] for item in prepared])
+    logger.info("committed and acknowledged events=%d", len(prepared))
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
@@ -74,6 +178,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         return
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL must be configured for the worker")
+
     database_url = settings.database_url
     if database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -88,32 +193,31 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 id="0",
                 mkstream=True,
             )
-        except ResponseError as exc:
-            if "BUSYGROUP" not in str(exc):
+        except ResponseError as error:
+            if "BUSYGROUP" not in str(error):
                 raise
 
         logger.info(
-            "workers started environment=%s stream=%s group=%s consumer=%s",
+            "worker started environment=%s stream=%s group=%s consumer=%s batch_size=%d",
             settings.environment,
             settings.event_stream_name,
             settings.consumer_group,
             settings.consumer_name,
+            settings.batch_size,
         )
         claim_cursor = "0-0"
         while not stop.is_set():
-            # Reclaim work abandoned by consumers that crashed or lost their lease.
             claimed = await redis.xautoclaim(
                 settings.event_stream_name,
                 settings.consumer_group,
                 settings.consumer_name,
                 settings.claim_idle_ms,
                 start_id=claim_cursor,
-                count=settings.read_count,
+                count=settings.batch_size,
             )
-            claim_cursor = claimed[0]
-            claimed_messages = claimed[1]
+            claim_cursor, claimed_messages = claimed[0], claimed[1]
             if claimed_messages:
-                await _process_messages(redis, pool, settings, claimed_messages)
+                await process_messages(redis, pool, settings, claimed_messages)
 
             if stop.is_set():
                 break
@@ -122,16 +226,19 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                 settings.consumer_group,
                 settings.consumer_name,
                 {settings.event_stream_name: ">"},
-                count=settings.read_count,
+                count=settings.batch_size,
                 block=settings.block_ms,
             )
-            for _stream, messages in batches:
-                await _process_messages(redis, pool, settings, messages)
+            for _stream_name, stream_messages in batches:
+                await process_messages(redis, pool, settings, stream_messages)
     finally:
-        # Stop fetching new work; in-flight message processing completes before exit.
-        await redis.aclose()
-        await pool.close()
-        logger.info("workers stopped")
+        # No new reads are started after stop; any currently awaited transaction
+        # finishes before resources close. Unacked work remains reclaimable.
+        try:
+            await redis.aclose()
+        finally:
+            await pool.close()
+        logger.info("worker stopped")
 
 
 async def _main() -> None:
