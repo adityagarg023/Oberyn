@@ -34,8 +34,8 @@ async def dashboard_rate_limit(request: Request) -> None:
         await enforce_dashboard_limit(
             redis,
             identity_hash,
-            window_seconds=60,
-            max_requests=120,
+            window_seconds=request.app.state.settings.dashboard_rate_limit_window_seconds,
+            max_requests=request.app.state.settings.dashboard_rate_limit_requests,
         )
     except RedisError as exc:
         raise HTTPException(status_code=503, detail="Dashboard rate limiter unavailable") from exc
@@ -124,10 +124,6 @@ class ProjectInput(BaseModel):
 
 class ProjectCorsInput(BaseModel):
     origins: list[str] = Field(default_factory=list, max_length=50)
-
-    @classmethod
-    def validate_origins(cls, value: list[str]) -> list[str]:
-        return value
 
 
 class IssueStatusInput(BaseModel):
