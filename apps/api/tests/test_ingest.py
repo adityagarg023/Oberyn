@@ -53,6 +53,10 @@ class FakeRedis:
         self.spike_reject = False
         self.quota_reject = False
         self.queue_reject = False
+        self.dashboard_reject = False
+
+    async def aclose(self) -> None:
+        return None
 
     async def get(self, key: str) -> str | None:
         if self.fail:
@@ -78,6 +82,8 @@ class FakeRedis:
         if "HGET" in script:
             return [0, 3] if self.bucket_reject else [1, 0]
         if "redis.call('INCR'," in script:
+            if str(keys[0]).startswith("oberyn:limit:dashboard:") and self.dashboard_reject:
+                return [0, 4]
             return [0, 4] if self.spike_reject else [1, 0]
         if "XLEN" in script:
             stream, quota_key = str(keys[0]), str(keys[1])
@@ -117,6 +123,7 @@ def api_client(
         return pool
 
     monkeypatch.setattr("app.main.asyncpg.create_pool", create_pool)
+    monkeypatch.setattr("app.main.Redis.from_url", lambda *args, **kwargs: redis)
     app = create_app(
         Settings(
             environment="test",
@@ -359,3 +366,13 @@ def test_project_cors_allowlist_rejects_unlisted_origin(
         },
     )
     assert response.status_code == 403
+
+
+def test_dashboard_api_rate_limit_returns_429(
+    api_client: tuple[TestClient, FakePool, FakeRedis],
+) -> None:
+    client, _pool, redis = api_client
+    redis.dashboard_reject = True
+    response = client.get("/api/dashboard/organizations")
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "4"
