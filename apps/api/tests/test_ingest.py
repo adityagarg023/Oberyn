@@ -92,9 +92,7 @@ class FakeRedis:
                 return [2, max_length]
             if self.quota_reject:
                 return [3, 0]
-            current_length = sum(
-                1 for entry_stream, _ in self.entries if entry_stream == stream
-            )
+            current_length = sum(1 for entry_stream, _ in self.entries if entry_stream == stream)
             if current_length >= max_length:
                 return [2, current_length]
             used = self.counters.get(quota_key, 0) + amount
