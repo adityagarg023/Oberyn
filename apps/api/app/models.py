@@ -45,6 +45,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False)
     owner_member_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    monthly_event_quota: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="1000000"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -96,6 +99,9 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False)
     platform: Mapped[str | None] = mapped_column(String(40))
+    cors_origins: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

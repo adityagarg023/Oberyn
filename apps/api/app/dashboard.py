@@ -12,6 +12,7 @@ import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -19,9 +20,33 @@ import httpx
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from jwt import PyJWKClient
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from redis.exceptions import RedisError
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+from app.ingestion_limits import enforce_dashboard_limit, invalidate_dsn_cache
+
+
+async def dashboard_rate_limit(request: Request) -> None:
+    """Apply a shared per-identity dashboard API limit across API processes."""
+    redis = request.app.state.redis
+    identity = request.client.host if request.client else "unknown"
+    identity_hash = hashlib.sha256(identity.encode()).hexdigest()
+    try:
+        await enforce_dashboard_limit(
+            redis,
+            identity_hash,
+            window_seconds=request.app.state.settings.dashboard_rate_limit_window_seconds,
+            max_requests=request.app.state.settings.dashboard_rate_limit_requests,
+        )
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="Dashboard rate limiter unavailable") from exc
+
+
+router = APIRouter(
+    prefix="/api/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(dashboard_rate_limit)],
+)
 _jwks: PyJWKClient | None = None
 
 
@@ -96,6 +121,30 @@ class OrganizationInput(BaseModel):
 class ProjectInput(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     platform: str = Field(default="javascript", max_length=40)
+
+
+class ProjectCorsInput(BaseModel):
+    origins: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("origins")
+    @classmethod
+    def validate_origins(cls, origins: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for value in origins:
+            origin = value.strip().rstrip("/")
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("Each CORS entry must be an absolute HTTP(S) origin")
+            normalized.append(origin)
+        return sorted(set(normalized))
 
 
 class IssueStatusInput(BaseModel):
@@ -259,6 +308,92 @@ async def create_project(
         + "@"
         + str(project_id),
     }
+
+
+@router.post("/organizations/{org_id}/projects/{project_id}/keys/rotate")
+async def rotate_project_key(
+    org_id: UUID,
+    project_id: UUID,
+    request: Request,
+    user: dict[str, str] = Depends(current_user),
+    db: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, str]:
+    member = await membership(db, org_id, user)
+    require_admin(member, "rotate project keys")
+    secret = "ob_live_" + secrets.token_urlsafe(32)
+    new_hash = hashlib.sha256(secret.encode()).hexdigest()
+    redis = request.app.state.redis
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            project = await conn.fetchrow(
+                "SELECT id FROM projects WHERE id=$1 AND organization_id=$2 FOR UPDATE",
+                project_id,
+                org_id,
+            )
+            if project is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+            old_hashes = await conn.fetch(
+                "SELECT key_hash FROM project_keys "
+                "WHERE project_id=$1 AND revoked_at IS NULL FOR UPDATE",
+                project_id,
+            )
+            try:
+                for row in old_hashes:
+                    await invalidate_dsn_cache(redis, project_id, row["key_hash"])
+            except RedisError as exc:
+                # Roll back the SQL transaction if cache invalidation cannot be guaranteed.
+                raise HTTPException(
+                    status_code=503, detail="Key rotation unavailable; retry safely"
+                ) from exc
+            await conn.execute(
+                "UPDATE project_keys SET revoked_at=now() "
+                "WHERE project_id=$1 AND revoked_at IS NULL",
+                project_id,
+            )
+            await conn.execute(
+                "INSERT INTO project_keys(id,project_id,organization_id,key_hash,label) "
+                "VALUES($1,$2,$3,$4,'rotated')",
+                uuid4(),
+                project_id,
+                org_id,
+                new_hash,
+            )
+    return {
+        "project_id": str(project_id),
+        "dsn": os.getenv("OBERYN_INGEST_URL", "http://localhost:8000").rstrip("/")
+        + "/"
+        + secret
+        + "@"
+        + str(project_id),
+    }
+
+
+@router.put("/organizations/{org_id}/projects/{project_id}/cors")
+async def update_project_cors(
+    org_id: UUID,
+    project_id: UUID,
+    body: ProjectCorsInput,
+    request: Request,
+    user: dict[str, str] = Depends(current_user),
+    db: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    member = await membership(db, org_id, user)
+    require_admin(member, "update project CORS settings")
+    origins = body.origins
+    try:
+        await request.app.state.redis.delete(f"oberyn:cors:{project_id}")
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="CORS policy update unavailable") from exc
+    row = await db.fetchrow(
+        "UPDATE projects SET cors_origins=$3::jsonb "
+        "WHERE id=$1 AND organization_id=$2 RETURNING id,cors_origins",
+        project_id,
+        org_id,
+        json.dumps(origins),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"project_id": str(project_id), "origins": origins}
 
 
 @router.get("/organizations/{org_id}/projects/{project_id}/issues")
@@ -480,7 +615,8 @@ async def merge_issues(
                    WHERE target.id=$1 AND source.id=$2
                    RETURNING target.id,target.title,target.status,target.event_count,"
                    "target.user_count,
-                             target.first_seen,target.last_seen,target.first_release,target.last_release""",
+                             target.first_seen,target.last_seen,target.first_release,"
+                   "target.last_release""",
                 target["id"],
                 source["id"],
             )
