@@ -93,11 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def cors_and_project_allowlist(request: Request, call_next: Any) -> Response:
         origin = request.headers.get("origin")
         path_parts = request.url.path.strip("/").split("/")
-        is_ingest = (
-            len(path_parts) == 3
-            and path_parts[0] == "api"
-            and path_parts[2] == "envelope"
-        )
+        is_ingest = len(path_parts) == 3 and path_parts[0] == "api" and path_parts[2] == "envelope"
         allowed = False
         if origin:
             if is_ingest:
@@ -211,9 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_events=settings.ingest_spike_max_events,
             )
         except RedisError as exc:
-            raise HTTPException(
-                status_code=503, detail="Ingestion protection unavailable"
-            ) from exc
+            raise HTTPException(status_code=503, detail="Ingestion protection unavailable") from exc
 
         max_bytes = settings.event_limits.max_payload_bytes
         content_length = request.headers.get("content-length")
@@ -260,9 +254,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logging.getLogger("oberyn.ingest").exception(
                 "failed to enqueue event_id=%s", event.event_id
             )
-            raise HTTPException(
-                status_code=503, detail="Ingestion queue unavailable"
-            ) from exc
+            raise HTTPException(status_code=503, detail="Ingestion queue unavailable") from exc
 
         return {"status": "accepted", "event_id": str(event.event_id)}
 
