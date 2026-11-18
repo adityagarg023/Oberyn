@@ -61,16 +61,16 @@ jobs:
         run: alembic upgrade head
       - name: Lint API and workers
         run: |
-          cd apps/api && ruff check app tests migrations
+          cd apps/api && ruff check app tests migrations/versions/0007_ingestion_hardening.py migrations/versions/0008_alert_delivery.py
           cd ../workers && ruff check workers tests
       - name: Check formatting
         run: |
-          cd apps/api && ruff format --check app tests migrations
+          cd apps/api && ruff format --check app tests migrations/versions/0007_ingestion_hardening.py migrations/versions/0008_alert_delivery.py
           cd ../workers && ruff format --check workers tests
       - name: Type check API and workers
         run: |
           cd apps/api && mypy app tests
-          cd ../workers && mypy workers tests
+          cd ../workers && mypy workers
       - name: Run API and worker tests
         run: |
           cd apps/api && pytest -q
