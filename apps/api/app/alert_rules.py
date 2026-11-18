@@ -190,11 +190,11 @@ async def delete_alert_rule(
 ) -> None:
     await _authorize(org_id, project_id, user, db)
     result = await db.execute(
-        "DELETE FROM alert_rules WHERE id=$1 AND project_id=$2",
+        "UPDATE alert_rules SET enabled=false WHERE id=$1 AND project_id=$2",
         rule_id,
         project_id,
     )
-    if result == "DELETE 0":
+    if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Alert rule not found")
 
 
