@@ -144,9 +144,7 @@ async def test_alert_rules_enqueue_once_and_deliver_through_mock_provider(
     is_regression: bool,
 ) -> None:
     pool = await asyncpg.create_pool(database_url(), min_size=1, max_size=4)
-    organization_id, project_id, issue_id, _rule_id = await create_alert_fixture(
-        pool, rule_type
-    )
+    organization_id, project_id, issue_id, _rule_id = await create_alert_fixture(pool, rule_type)
     notifier = MockNotifier()
 
     def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
@@ -195,9 +193,7 @@ async def test_alert_rules_enqueue_once_and_deliver_through_mock_provider(
 @pytest.mark.asyncio
 async def test_failed_delivery_is_retried_and_history_is_updated() -> None:
     pool = await asyncpg.create_pool(database_url(), min_size=1, max_size=4)
-    organization_id, project_id, issue_id, _rule_id = await create_alert_fixture(
-        pool, "new_issue"
-    )
+    organization_id, project_id, issue_id, _rule_id = await create_alert_fixture(pool, "new_issue")
     notifier = MockNotifier(fail_first=True)
 
     def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
