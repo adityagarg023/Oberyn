@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import UTC, datetime
+from collections.abc import Mapping
 from typing import Any
 
 import asyncpg
@@ -27,7 +29,7 @@ class MockNotifier:
         self.calls: list[tuple[dict[str, Any], str]] = []
         self.fail_first = fail_first
 
-    async def send(self, payload: dict[str, Any], destination: str) -> None:
+    async def send(self, payload: Mapping[str, Any], destination: str) -> None:
         self.calls.append((payload, destination))
         if self.fail_first and len(self.calls) == 1:
             raise RuntimeError("simulated provider outage")
@@ -97,7 +99,7 @@ async def create_alert_fixture(
             project_id,
             organization_id,
             f"{rule_type} rule",
-            __import__("json").dumps(
+            json.dumps(
                 {
                     "type": rule_type,
                     "cooldown_seconds": 300,
@@ -146,7 +148,8 @@ async def test_alert_rules_enqueue_once_and_deliver_through_mock_provider(
         pool, rule_type
     )
     notifier = MockNotifier()
-    factory = lambda _payload: [(notifier, "oncall@example.test")]
+    def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
+        return [(notifier, "oncall@example.test")]
     try:
         async with pool.acquire() as connection:
             queued = await evaluate_rules(
