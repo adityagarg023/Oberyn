@@ -4,7 +4,8 @@ import asyncio
 import logging
 import os
 from collections.abc import Mapping
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -132,7 +133,8 @@ async def evaluate_rules(
         if rule_type not in {"new_issue", "regression", "event_count", "user_count"}:
             continue
 
-        since = occurred_at - __import__("datetime").timedelta(seconds=rule["window_seconds"])
+        now = datetime.now(UTC)
+        since = now - timedelta(seconds=rule["window_seconds"])
         if rule_type == "new_issue" and not is_new_issue:
             continue
         if rule_type == "regression" and not is_regression:
@@ -158,7 +160,7 @@ async def evaluate_rules(
                 continue
 
         cooldown = max(1, int(config.get("cooldown_seconds", rule["window_seconds"])))
-        bucket = int(occurred_at.timestamp()) // cooldown
+        bucket = int(now.timestamp()) // cooldown
         dedupe_key = f"{rule['id']}:{issue_id}:{bucket}"
         message = (
             f"{issue['title']} | events: {issue['event_count']} | "
@@ -189,7 +191,7 @@ async def evaluate_rules(
             project_id,
             issue_id,
             occurred_at,
-            __import__("json").dumps(payload),
+            json.dumps(payload),
             dedupe_key,
         )
         queued += int(result is not None)
