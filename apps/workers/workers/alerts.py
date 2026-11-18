@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
-from urllib.parse import urlsplit
 from collections.abc import Mapping
-import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import asyncpg
@@ -34,7 +34,7 @@ class ResendNotifier:
     ) -> None:
         self.api_key = api_key if api_key is not None else os.getenv("RESEND_API_KEY", "")
         self.sender = sender if sender is not None else os.getenv(
-            "ALERT_EMAIL_FROM", "Oberyn Alerts <alerts@resend.dev>"
+            "ALERT_EMAIL_FROM", "Oberyn Alerts <onboarding@resend.dev>"
         )
         self.client = client
 
