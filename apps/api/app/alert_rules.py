@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any, Literal
 from uuid import UUID
+from urllib.parse import urlsplit
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,8 +41,16 @@ class AlertRuleInput(BaseModel):
     @field_validator("slack_webhook_url")
     @classmethod
     def validate_slack_url(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith("https://hooks.slack.com/services/"):
-            raise ValueError("slack_webhook_url must be a Slack incoming webhook URL")
+        if value is not None:
+            parsed = urlsplit(value)
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname != "hooks.slack.com"
+                or not parsed.path.startswith("/services/")
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("slack_webhook_url must be a Slack incoming webhook URL")
         return value
 
     def provider_config(self) -> dict[str, Any]:
@@ -56,6 +65,14 @@ class AlertRuleInput(BaseModel):
             "email_to": self.email_to,
             "slack_webhook_url": self.slack_webhook_url,
         }
+
+
+def _public_rule(row: asyncpg.Record) -> dict[str, Any]:
+    result = dict(row)
+    config = dict(result.get("config") or {})
+    config["slack_webhook_configured"] = bool(config.pop("slack_webhook_url", None))
+    result["config"] = config
+    return result
 
 
 async def _authorize(
@@ -91,7 +108,7 @@ async def list_alert_rules(
         """,
         project_id,
     )
-    return {"data": [dict(row) for row in rows]}
+    return {"data": [_public_rule(row) for row in rows]}
 
 
 @router.post("", status_code=201)
@@ -123,7 +140,7 @@ async def create_alert_rule(
         body.enabled,
         json.dumps(config),
     )
-    return {"rule": dict(row)}
+    return {"rule": _public_rule(row)}
 
 
 @router.put("/{rule_id}")
