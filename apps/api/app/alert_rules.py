@@ -94,7 +94,7 @@ async def _authorize(
     return member
 
 
-@router.get("")
+@router.get("/")
 async def list_alert_rules(
     org_id: UUID,
     project_id: UUID,
@@ -112,7 +112,7 @@ async def list_alert_rules(
     return {"data": [_public_rule(row) for row in rows]}
 
 
-@router.post("", status_code=201)
+@router.post("/", status_code=201)
 async def create_alert_rule(
     org_id: UUID,
     project_id: UUID,
