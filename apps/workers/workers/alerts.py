@@ -114,7 +114,7 @@ async def evaluate_rules(
     """Insert durable outbox rows for matching rules in the event transaction."""
     issue = await connection.fetchrow(
         "SELECT title,event_count,user_count,status FROM issues "
-        "WHERE id=$1 AND project_id=$2",
+        "WHERE id=$1 AND project_id=$2 FOR UPDATE",
         issue_id,
         project_id,
     )
@@ -160,6 +160,20 @@ async def evaluate_rules(
                 continue
 
         cooldown = max(1, int(config.get("cooldown_seconds", rule["window_seconds"])))
+        recently_triggered = await connection.fetchval(
+            """
+            SELECT 1 FROM alert_history
+            WHERE alert_rule_id=$1 AND issue_id=$2
+              AND triggered_at > $3 - ($4 * interval '1 second')
+            LIMIT 1
+            """,
+            rule["id"],
+            issue_id,
+            now,
+            cooldown,
+        )
+        if recently_triggered:
+            continue
         bucket = int(now.timestamp()) // cooldown
         dedupe_key = f"{rule['id']}:{issue_id}:{bucket}"
         message = (
@@ -215,8 +229,8 @@ async def deliver_pending(
                 WHERE (status='pending' AND next_attempt_at <= now())
                    OR (status='sending' AND updated_at < now() - interval '5 minutes')
                 ORDER BY triggered_at
-                FOR UPDATE SKIP LOCKED
                 LIMIT $1
+                FOR UPDATE SKIP LOCKED
                 """,
                 batch_size,
             )
