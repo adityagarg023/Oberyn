@@ -214,7 +214,7 @@ async def evaluate_rules(
             rule["id"],
             project_id,
             issue_id,
-            occurred_at,
+            now,
             json.dumps(payload),
             dedupe_key,
         )
