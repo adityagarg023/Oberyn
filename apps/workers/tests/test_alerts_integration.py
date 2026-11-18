@@ -201,14 +201,17 @@ async def test_failed_delivery_is_retried_and_history_is_updated() -> None:
 
     try:
         async with pool.acquire() as connection:
-            assert await evaluate_rules(
-                connection,
-                project_id=project_id,
-                issue_id=issue_id,
-                occurred_at=datetime.now(UTC),
-                is_new_issue=True,
-                is_regression=False,
-            ) == 1
+            assert (
+                await evaluate_rules(
+                    connection,
+                    project_id=project_id,
+                    issue_id=issue_id,
+                    occurred_at=datetime.now(UTC),
+                    is_new_issue=True,
+                    is_regression=False,
+                )
+                == 1
+            )
 
         assert await deliver_pending(pool, notifier_factory=factory) == 0
         async with pool.acquire() as connection:
