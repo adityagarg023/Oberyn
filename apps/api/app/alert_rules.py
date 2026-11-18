@@ -141,6 +141,8 @@ async def create_alert_rule(
         body.enabled,
         json.dumps(config),
     )
+    if row is None:
+        raise HTTPException(status_code=500, detail="Could not create alert rule")
     return {"rule": _public_rule(row)}
 
 
@@ -177,7 +179,7 @@ async def update_alert_rule(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Alert rule not found")
-    return {"rule": dict(row)}
+    return {"rule": _public_rule(row)}
 
 
 @router.delete("/{rule_id}", status_code=204)
@@ -208,7 +210,8 @@ async def list_alert_history(
     await _authorize(org_id, project_id, user, db)
     rows = await db.fetch(
         """
-        SELECT id,alert_rule_id,issue_id,triggered_at,status,attempts,
+        SELECT id,alert_rule_id,issue_id,payload->>'delivery_channel' AS channel,
+               triggered_at,status,attempts,
                next_attempt_at,delivered_at,last_error,created_at
         FROM alert_history
         WHERE project_id=$1
