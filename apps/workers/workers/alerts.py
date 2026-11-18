@@ -138,7 +138,8 @@ async def evaluate_rules(
     )
     queued = 0
     for rule in rules:
-        config = rule["config"] or {}
+        raw_config = rule["config"] or {}
+        config = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
         rule_type = config.get("type")
         if rule_type not in {"new_issue", "regression", "event_count", "user_count"}:
             continue
@@ -252,7 +253,8 @@ async def deliver_pending(
 
     delivered = 0
     for row in rows:
-        payload = row["payload"] or {}
+        raw_payload = row["payload"] or {}
+        payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
         destinations = notifier_factory(payload)
         try:
             if not destinations:
