@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import re
 from typing import Any, Literal
-from uuid import UUID
 from urllib.parse import urlsplit
+from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
