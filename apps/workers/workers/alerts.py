@@ -34,8 +34,10 @@ class ResendNotifier:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.api_key = api_key if api_key is not None else os.getenv("RESEND_API_KEY", "")
-        self.sender = sender if sender is not None else os.getenv(
-            "ALERT_EMAIL_FROM", "Oberyn Alerts <onboarding@resend.dev>"
+        self.sender = (
+            sender
+            if sender is not None
+            else os.getenv("ALERT_EMAIL_FROM", "Oberyn Alerts <onboarding@resend.dev>")
         )
         self.client = client
 
@@ -132,6 +134,7 @@ def _notification_targets(config: Mapping[str, Any]) -> list[tuple[str, str]]:
     return targets
 
 
+
 async def evaluate_rules(
     connection: asyncpg.Connection,
     *,
@@ -214,9 +217,7 @@ async def evaluate_rules(
         targets = _notification_targets(config)
         for channel, destination in targets:
             destination_hash = hashlib.sha256(destination.encode()).hexdigest()[:16]
-            dedupe_key = (
-                f"{rule['id']}:{issue_id}:{bucket}:{channel}:{destination_hash}"
-            )
+            dedupe_key = f"{rule['id']}:{issue_id}:{bucket}:{channel}:{destination_hash}"
             payload = {
                 "rule_name": rule["name"],
                 "rule_type": rule_type,
