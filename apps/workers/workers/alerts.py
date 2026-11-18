@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -85,17 +86,37 @@ class SlackWebhookNotifier:
 
 
 def _destinations(config: Mapping[str, Any]) -> list[tuple[Notifier, str]]:
-    destinations: list[tuple[Notifier, str]] = []
+    channel = config.get("delivery_channel")
+    destination = config.get("delivery_destination")
+    if not isinstance(destination, str):
+        return []
+    if channel == "email" and destination:
+        return [(ResendNotifier(), destination)]
+    if channel == "slack":
+        parsed = urlsplit(destination)
+        if (
+            parsed.scheme == "https"
+            and parsed.hostname == "hooks.slack.com"
+            and parsed.path.startswith("/services/")
+            and not parsed.username
+            and not parsed.password
+        ):
+            return [(SlackWebhookNotifier(), destination)]
+    return []
+
+
+def _notification_targets(config: Mapping[str, Any]) -> list[tuple[str, str]]:
+    targets: list[tuple[str, str]] = []
     channels = config.get("channels", [])
     if not isinstance(channels, list):
-        return destinations
+        return targets
     for channel in channels:
         if channel == "email":
             recipients = config.get("email_to", [])
             if isinstance(recipients, str):
                 recipients = [recipients]
             if isinstance(recipients, list):
-                destinations.extend((ResendNotifier(), str(value)) for value in recipients if value)
+                targets.extend(("email", str(value)) for value in recipients if value)
         elif channel == "slack":
             webhook = config.get("slack_webhook_url")
             if isinstance(webhook, str):
@@ -107,9 +128,8 @@ def _destinations(config: Mapping[str, Any]) -> list[tuple[Notifier, str]]:
                     and not parsed.username
                     and not parsed.password
                 ):
-                    destinations.append((SlackWebhookNotifier(), webhook))
-    return destinations
-
+                    targets.append(("slack", webhook))
+    return targets
 
 async def evaluate_rules(
     connection: asyncpg.Connection,
@@ -191,35 +211,40 @@ async def evaluate_rules(
             f"{issue['title']} | events: {issue['event_count']} | "
             f"users: {issue['user_count']} | status: {issue['status']}"
         )
-        payload = {
-            "rule_name": rule["name"],
-            "rule_type": rule_type,
-            "issue_id": str(issue_id),
-            "title": f"Oberyn: {rule['name']}",
-            "message": message,
-            "channels": config.get("channels", []),
-            "email_to": config.get("email_to", []),
-            "slack_webhook_url": config.get("slack_webhook_url"),
-        }
-        result = await connection.fetchval(
-            """
-            INSERT INTO alert_history (
-                id, alert_rule_id, project_id, issue_id, triggered_at,
-                payload, status, attempts, next_attempt_at, dedupe_key
+        targets = _notification_targets(config)
+        for channel, destination in targets:
+            destination_hash = hashlib.sha256(destination.encode()).hexdigest()[:16]
+            dedupe_key = (
+                f"{rule['id']}:{issue_id}:{bucket}:{channel}:{destination_hash}"
             )
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::jsonb,
-                    'pending', 0, now(), $6)
-            ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
-            RETURNING id
-            """,
-            rule["id"],
-            project_id,
-            issue_id,
-            now,
-            json.dumps(payload),
-            dedupe_key,
-        )
-        queued += int(result is not None)
+            payload = {
+                "rule_name": rule["name"],
+                "rule_type": rule_type,
+                "issue_id": str(issue_id),
+                "title": f"Oberyn: {rule['name']}",
+                "message": message,
+                "delivery_channel": channel,
+                "delivery_destination": destination,
+            }
+            result = await connection.fetchval(
+                """
+                INSERT INTO alert_history (
+                    id, alert_rule_id, project_id, issue_id, triggered_at,
+                    payload, status, attempts, next_attempt_at, dedupe_key
+                )
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::jsonb,
+                        'pending', 0, now(), $6)
+                ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
+                RETURNING id
+                """,
+                rule["id"],
+                project_id,
+                issue_id,
+                now,
+                json.dumps(payload),
+                dedupe_key,
+            )
+            queued += int(result is not None)
     return queued
 
 
