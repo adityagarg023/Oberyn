@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from urllib.parse import urlsplit
 from collections.abc import Mapping
 import json
 from datetime import UTC, datetime, timedelta
@@ -97,8 +98,16 @@ def _destinations(config: Mapping[str, Any]) -> list[tuple[Notifier, str]]:
                 destinations.extend((ResendNotifier(), str(value)) for value in recipients if value)
         elif channel == "slack":
             webhook = config.get("slack_webhook_url")
-            if isinstance(webhook, str) and webhook.startswith("https://"):
-                destinations.append((SlackWebhookNotifier(), webhook))
+            if isinstance(webhook, str):
+                parsed = urlsplit(webhook)
+                if (
+                    parsed.scheme == "https"
+                    and parsed.hostname == "hooks.slack.com"
+                    and parsed.path.startswith("/services/")
+                    and not parsed.username
+                    and not parsed.password
+                ):
+                    destinations.append((SlackWebhookNotifier(), webhook))
     return destinations
 
 
@@ -266,7 +275,7 @@ async def deliver_pending(
                     row["id"],
                     "failed" if terminal else "pending",
                     attempts,
-                    str(error)[:2000],
+                    f"{type(error).__name__}: notification delivery failed",
                     delay,
                 )
             logger.warning("alert delivery failed id=%s attempts=%d", row["id"], attempts)
