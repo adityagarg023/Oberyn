@@ -206,7 +206,6 @@ async def evaluate_rules(
         if recently_triggered:
             continue
         bucket = int(now.timestamp()) // cooldown
-        dedupe_key = f"{rule['id']}:{issue_id}:{bucket}"
         message = (
             f"{issue['title']} | events: {issue['event_count']} | "
             f"users: {issue['user_count']} | status: {issue['status']}"
