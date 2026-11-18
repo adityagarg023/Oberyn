@@ -60,9 +60,11 @@ class AlertRuleInput(BaseModel):
     ) -> dict[str, Any]:
         if "email" in self.channels and not self.email_to:
             raise ValueError("email channel requires at least one email_to recipient")
-        slack_webhook_url = self.slack_webhook_url or existing_slack_webhook_url
-        if "slack" in self.channels and not slack_webhook_url:
-            raise ValueError("slack channel requires slack_webhook_url")
+        slack_webhook_url = None
+        if "slack" in self.channels:
+            slack_webhook_url = self.slack_webhook_url or existing_slack_webhook_url
+            if not slack_webhook_url:
+                raise ValueError("slack channel requires slack_webhook_url")
         return {
             "type": self.type,
             "cooldown_seconds": self.cooldown_seconds,
