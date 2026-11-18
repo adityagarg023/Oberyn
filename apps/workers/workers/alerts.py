@@ -208,7 +208,7 @@ async def evaluate_rules(
             )
             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::jsonb,
                     'pending', 0, now(), $6)
-            ON CONFLICT (dedupe_key) DO NOTHING
+            ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
             RETURNING id
             """,
             rule["id"],
