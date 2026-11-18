@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import UTC, datetime
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -148,6 +148,7 @@ async def test_alert_rules_enqueue_once_and_deliver_through_mock_provider(
         pool, rule_type
     )
     notifier = MockNotifier()
+
     def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
         return [(notifier, "oncall@example.test")]
     try:
@@ -197,7 +198,8 @@ async def test_failed_delivery_is_retried_and_history_is_updated() -> None:
         pool, "new_issue"
     )
     notifier = MockNotifier(fail_first=True)
-    factory = lambda _payload: [(notifier, "oncall@example.test")]
+    def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
+        return [(notifier, "oncall@example.test")]
     try:
         async with pool.acquire() as connection:
             assert await evaluate_rules(
