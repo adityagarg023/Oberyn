@@ -280,8 +280,8 @@ async def deliver_pending(
     for row in rows:
         raw_payload = row["payload"] or {}
         payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
-        destinations = notifier_factory(payload)
         try:
+            destinations = notifier_factory(payload)
             if not destinations:
                 raise RuntimeError("Alert has no valid notification destinations")
             for notifier, destination in destinations:
