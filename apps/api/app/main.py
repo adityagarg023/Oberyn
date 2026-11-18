@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
 from app.dashboard import router as dashboard_router
+from app.alert_rules import router as alert_rules_router
 from app.db import engine
 from app.ingestion_limits import (
     enforce_spike_limit,
@@ -144,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(dashboard_router)
+    app.include_router(alert_rules_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
