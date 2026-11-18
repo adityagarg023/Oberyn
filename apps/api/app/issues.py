@@ -35,38 +35,52 @@ issue AS (
         last_seen = GREATEST(issues.last_seen, EXCLUDED.last_seen),
         event_count = issues.event_count + 1,
         first_release = CASE
-            WHEN EXCLUDED.first_seen < issues.first_seen AND EXCLUDED.first_release IS NOT NULL
+            WHEN EXCLUDED.first_release IS NOT NULL
+             AND (
+                issues.first_release IS NULL
+                OR (SELECT created_at FROM release_upsert) < (
+                    SELECT created_at FROM releases
+                    WHERE project_id = issues.project_id AND version = issues.first_release
+                )
+             )
             THEN EXCLUDED.first_release
-            ELSE COALESCE(issues.first_release, EXCLUDED.first_release)
+            ELSE issues.first_release
         END,
         last_release = CASE
-            WHEN EXCLUDED.last_seen > issues.last_seen AND EXCLUDED.last_release IS NOT NULL THEN
-            EXCLUDED.last_release
-            ELSE COALESCE(issues.last_release, EXCLUDED.last_release)
+            WHEN EXCLUDED.last_release IS NOT NULL
+             AND (
+                issues.last_release IS NULL
+                OR (SELECT created_at FROM release_upsert) > (
+                    SELECT created_at FROM releases
+                    WHERE project_id = issues.project_id AND version = issues.last_release
+                )
+             )
+            THEN EXCLUDED.last_release
+            ELSE issues.last_release
         END,
         status = CASE
             WHEN issues.status = 'resolved'
+             AND issues.resolved_in_release IS NOT NULL
              AND EXCLUDED.last_release IS NOT NULL
-             AND EXCLUDED.last_release IS DISTINCT FROM issues.resolved_in_release
-             AND EXCLUDED.last_seen > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
+             AND (SELECT created_at FROM release_upsert) > (
+                SELECT created_at FROM releases
+                WHERE project_id = issues.project_id
+                  AND version = issues.resolved_in_release
+             )
             THEN 'regressed'
             ELSE issues.status
         END,
         resolved_at = CASE
             WHEN issues.status = 'resolved'
+             AND issues.resolved_in_release IS NOT NULL
              AND EXCLUDED.last_release IS NOT NULL
-             AND EXCLUDED.last_release IS DISTINCT FROM issues.resolved_in_release
-             AND EXCLUDED.last_seen > COALESCE(issues.resolved_at, '-infinity'::timestamptz)
+             AND (SELECT created_at FROM release_upsert) > (
+                SELECT created_at FROM releases
+                WHERE project_id = issues.project_id
+                  AND version = issues.resolved_in_release
+             )
             THEN NULL
             ELSE issues.resolved_at
-        END,
-        resolved_in_release = CASE
-            WHEN issues.status = 'resolved'
-             AND EXCLUDED.last_release IS NOT NULL
-             AND EXCLUDED.last_seen > issues.last_seen
-             AND EXCLUDED.last_seen <= issues.resolved_at
-            THEN EXCLUDED.last_release
-            ELSE issues.resolved_in_release
         END
     RETURNING id, project_id
 ),
