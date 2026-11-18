@@ -17,9 +17,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.alert_rules import router as alert_rules_router
 from app.config import Settings, load_settings
 from app.contracts.events import validate_event_payload
-from app.alert_rules import router as alert_rules_router
 from app.dashboard import router as dashboard_router
 from app.db import engine
 from app.ingestion_limits import (
