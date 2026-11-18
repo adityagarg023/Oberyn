@@ -69,7 +69,8 @@ class AlertRuleInput(BaseModel):
 
 def _public_rule(row: asyncpg.Record) -> dict[str, Any]:
     result = dict(row)
-    config = dict(result.get("config") or {})
+    raw_config = result.get("config") or {}
+    config = json.loads(raw_config) if isinstance(raw_config, str) else dict(raw_config)
     config["slack_webhook_configured"] = bool(config.pop("slack_webhook_url", None))
     result["config"] = config
     return result
