@@ -355,7 +355,12 @@ class AlertHistory(Base):
             ondelete="CASCADE",
             name="fk_alert_history_issue_project",
         ),
-        UniqueConstraint("dedupe_key", name="uq_alert_history_dedupe_key"),
+        Index(
+            "uq_alert_history_dedupe_key",
+            "dedupe_key",
+            unique=True,
+            postgresql_where=text("dedupe_key IS NOT NULL"),
+        ),
         CheckConstraint(
             "status IN ('pending', 'sending', 'delivered', 'failed')",
             name="ck_alert_history_status",
