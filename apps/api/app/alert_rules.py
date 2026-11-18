@@ -178,3 +178,25 @@ async def delete_alert_rule(
     )
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Alert rule not found")
+
+
+@router.get("/history")
+async def list_alert_history(
+    org_id: UUID,
+    project_id: UUID,
+    user: dict[str, str] = Depends(current_user),
+    db: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    await _authorize(org_id, project_id, user, db)
+    rows = await db.fetch(
+        """
+        SELECT id,alert_rule_id,issue_id,triggered_at,status,attempts,
+               next_attempt_at,delivered_at,last_error,created_at
+        FROM alert_history
+        WHERE project_id=$1
+        ORDER BY triggered_at DESC
+        LIMIT 100
+        """,
+        project_id,
+    )
+    return {"data": [dict(row) for row in rows]}
