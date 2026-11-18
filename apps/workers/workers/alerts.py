@@ -134,7 +134,6 @@ def _notification_targets(config: Mapping[str, Any]) -> list[tuple[str, str]]:
     return targets
 
 
-
 async def evaluate_rules(
     connection: asyncpg.Connection,
     *,
