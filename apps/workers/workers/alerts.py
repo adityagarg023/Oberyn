@@ -113,8 +113,9 @@ async def evaluate_rules(
 ) -> int:
     """Insert durable outbox rows for matching rules in the event transaction."""
     issue = await connection.fetchrow(
-        "SELECT title,event_count,user_count,status FROM issues "
-        "WHERE id=$1 AND project_id=$2 FOR UPDATE",
+        "SELECT title,event_count,status,"
+        "(SELECT count(*) FROM issue_users WHERE issue_id=issues.id) AS user_count "
+        "FROM issues WHERE id=$1 AND project_id=$2 FOR UPDATE",
         issue_id,
         project_id,
     )
