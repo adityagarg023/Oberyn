@@ -53,17 +53,22 @@ class AlertRuleInput(BaseModel):
                 raise ValueError("slack_webhook_url must be a Slack incoming webhook URL")
         return value
 
-    def provider_config(self) -> dict[str, Any]:
+    def provider_config(
+        self,
+        *,
+        existing_slack_webhook_url: str | None = None,
+    ) -> dict[str, Any]:
         if "email" in self.channels and not self.email_to:
             raise ValueError("email channel requires at least one email_to recipient")
-        if "slack" in self.channels and not self.slack_webhook_url:
+        slack_webhook_url = self.slack_webhook_url or existing_slack_webhook_url
+        if "slack" in self.channels and not slack_webhook_url:
             raise ValueError("slack channel requires slack_webhook_url")
         return {
             "type": self.type,
             "cooldown_seconds": self.cooldown_seconds,
             "channels": self.channels,
             "email_to": self.email_to,
-            "slack_webhook_url": self.slack_webhook_url,
+            "slack_webhook_url": slack_webhook_url,
         }
 
 
@@ -156,8 +161,19 @@ async def update_alert_rule(
     db: asyncpg.Pool = Depends(get_pool),
 ) -> dict[str, Any]:
     await _authorize(org_id, project_id, user, db)
+    existing = await db.fetchrow(
+        "SELECT config FROM alert_rules WHERE id=$1 AND project_id=$2",
+        rule_id,
+        project_id,
+    )
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+    raw_config = existing["config"] or {}
+    existing_config = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
     try:
-        config = body.provider_config()
+        config = body.provider_config(
+            existing_slack_webhook_url=existing_config.get("slack_webhook_url")
+        )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     row = await db.fetchrow(
