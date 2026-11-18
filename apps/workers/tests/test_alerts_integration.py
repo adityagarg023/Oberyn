@@ -151,6 +151,7 @@ async def test_alert_rules_enqueue_once_and_deliver_through_mock_provider(
 
     def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
         return [(notifier, "oncall@example.test")]
+
     try:
         async with pool.acquire() as connection:
             queued = await evaluate_rules(
