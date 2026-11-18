@@ -26,7 +26,7 @@ def database_url() -> str:
 
 class MockNotifier:
     def __init__(self, *, fail_first: bool = False) -> None:
-        self.calls: list[tuple[dict[str, Any], str]] = []
+        self.calls: list[tuple[Mapping[str, Any], str]] = []
         self.fail_first = fail_first
 
     async def send(self, payload: Mapping[str, Any], destination: str) -> None:
