@@ -199,8 +199,10 @@ async def test_failed_delivery_is_retried_and_history_is_updated() -> None:
         pool, "new_issue"
     )
     notifier = MockNotifier(fail_first=True)
+
     def factory(_payload: Mapping[str, Any]) -> list[tuple[MockNotifier, str]]:
         return [(notifier, "oncall@example.test")]
+
     try:
         async with pool.acquire() as connection:
             assert await evaluate_rules(
