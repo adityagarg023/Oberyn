@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 
 import httpx
 import pytest
@@ -30,7 +29,6 @@ async def test_resend_notifier_posts_email_to_mocked_provider() -> None:
     assert len(requests) == 1
     assert requests[0].url == "https://api.resend.com/emails"
     assert requests[0].headers["Authorization"] == "Bearer re_test_key"
-    assert requests[0].read()
     assert b"oncall@example.test" in requests[0].content
 
 
