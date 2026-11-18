@@ -55,3 +55,28 @@ ruff check workers tests
 ruff format --check workers tests
 mypy workers
 ```
+
+
+## Alerting
+
+Alert rules are project-scoped and managed by organization owners/admins through
+`/api/dashboard/organizations/{org_id}/projects/{project_id}/alert-rules`.
+The API supports create, list, update, delete, and delivery-history reads.
+
+Supported rule types are `new_issue`, `regression`, `event_count`, and
+`user_count`. Each rule configures a time window, per-issue cooldown, and one
+or both delivery channels. Email recipients use the shared `RESEND_API_KEY`
+and optional `ALERT_EMAIL_FROM`; Slack incoming webhook URLs are configured
+on the rule.
+
+Workers insert matching notifications into `alert_history` in the same
+transaction as event persistence. The independent asyncio delivery loop claims
+pending rows with `FOR UPDATE SKIP LOCKED`, records attempts and delivery
+outcomes, and retries failures with exponential backoff. A unique dedupe key
+and a locked issue row enforce per-rule/per-issue cooldowns across worker
+processes. Provider calls happen after the event transaction commits and never
+run in the HTTP ingest request.
+
+Apply API migrations before starting the workers. Alert integration tests use
+the dedicated `TEST_DATABASE_URL` and mock the `Notifier` provider interface;
+they do not send real email or Slack messages.
