@@ -33,7 +33,16 @@ async def main() -> None:
                 db_started = time.perf_counter()
                 await connection.fetchval("SELECT 1")
                 db_latency_ms = (time.perf_counter() - db_started) * 1000
-                event_count = await connection.fetchval("SELECT count(*) FROM raw_events")
+                # Read PostgreSQL's cumulative insert counter instead of COUNT(*),
+                # which would scan an ever-growing table and distort the benchmark.
+                event_count = await connection.fetchval(
+                    """
+                    SELECT COALESCE(n_tup_ins, 0)
+                    FROM pg_stat_user_tables
+                    WHERE relname = 'raw_events'
+                    """
+                )
+            event_count = int(event_count or 0)
             stream_length = await redis.xlen(stream)
             groups = await redis.xinfo_groups(stream) if stream_length else []
             group = next((item for item in groups if item.get("name") == group_name), {})
@@ -42,9 +51,9 @@ async def main() -> None:
             lag = int(lag_value) if lag_value is not None else None
             throughput = (
                 None if previous_count is None
-                else max(0, int(event_count) - previous_count) / interval
+                else max(0, event_count - previous_count) / interval
             )
-            previous_count = int(event_count)
+            previous_count = event_count
             print(json.dumps({
                 "timestamp": datetime.now(UTC).isoformat(),
                 "stream": stream,
@@ -52,7 +61,7 @@ async def main() -> None:
                 "consumer_group": group_name,
                 "consumer_group_lag": lag,
                 "pending": pending,
-                "persisted_raw_events": int(event_count),
+                "postgres_raw_events_insert_counter": event_count,
                 "worker_persisted_events_per_second": throughput,
                 "database_select_1_latency_ms": round(db_latency_ms, 3),
             }), flush=True)
