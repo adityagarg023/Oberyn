@@ -2,7 +2,7 @@
 
 Oberyn is a multi-tenant error monitoring platform in the spirit of Sentry. Applications send errors through a TypeScript SDK, the ingest API accepts them quickly, workers process them asynchronously, and the dashboard, alerts, and AI features read the results.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design, [CONTRIBUTING.md](CONTRIBUTING.md) for conventions, and [loadtest/README.md](loadtest/README.md) for the k6 load-testing suite and benchmark reporting instructions.
 
 ## Repository layout
 
@@ -17,6 +17,7 @@ packages/
   contracts/    Shared protocol constants and types
 infra/
   docker-compose.yml  Local PostgreSQL and Redis
+loadtest/      k6 ingest workload and Redis/PostgreSQL monitor
 tests/          Cross-service integration and load tests (added with those features)
 ```
 
