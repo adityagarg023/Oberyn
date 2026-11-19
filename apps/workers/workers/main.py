@@ -12,6 +12,7 @@ from app.contracts.events import EventV1
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
+from workers.alerts import delivery_loop
 from workers.config import Settings, load_settings
 from workers.persistence import persist_batch
 from workers.processing import normalize_event, scrub_raw_payload, scrub_text
@@ -185,6 +186,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
 
     pool = await asyncpg.create_pool(database_url, min_size=1, max_size=10)
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    alert_delivery_task: asyncio.Task[None] | None = None
     try:
         try:
             await redis.xgroup_create(
@@ -197,6 +199,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             if "BUSYGROUP" not in str(error):
                 raise
 
+        alert_delivery_task = asyncio.create_task(delivery_loop(pool, stop))
         logger.info(
             "worker started environment=%s stream=%s group=%s consumer=%s batch_size=%d",
             settings.environment,
@@ -232,6 +235,9 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             for _stream_name, stream_messages in batches:
                 await process_messages(redis, pool, settings, stream_messages)
     finally:
+        stop.set()
+        if alert_delivery_task is not None:
+            await alert_delivery_task
         # No new reads are started after stop; any currently awaited transaction
         # finishes before resources close. Unacked work remains reclaimable.
         try:

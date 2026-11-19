@@ -36,6 +36,7 @@ class FakeConnection:
         self.event_rows: set[tuple[UUID, UUID]] = set()
         self.event_inserts = 0
         self.crash_after: int | None = None
+        self.issue_ids: dict[tuple[UUID, str], UUID] = {}
 
     def snapshot(self) -> tuple[Any, ...]:
         return (
@@ -43,24 +44,80 @@ class FakeConnection:
             deepcopy(self.issue_counts),
             deepcopy(self.event_rows),
             self.event_inserts,
+            deepcopy(self.issue_ids),
         )
 
     def restore(self, snapshot: tuple[Any, ...]) -> None:
-        self.raw_ids, self.issue_counts, self.event_rows, self.event_inserts = snapshot
+        (
+            self.raw_ids,
+            self.issue_counts,
+            self.event_rows,
+            self.event_inserts,
+            self.issue_ids,
+        ) = snapshot
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction(self)
 
-    async def fetchrow(self, query: str, *args: Any) -> dict[str, Any]:
+    async def fetchrow(self, query: str, *args: Any) -> dict[str, Any] | None:
+        normalized_query = query.lstrip()
+
+        if normalized_query.startswith("SELECT title,event_count,status"):
+            issue_id, project_id = args
+            issue_key = next(
+                (
+                    key
+                    for key, value in self.issue_ids.items()
+                    if value == issue_id and key[0] == project_id
+                ),
+                None,
+            )
+            if issue_key is None:
+                return None
+            return {
+                "title": "Test issue",
+                "event_count": self.issue_counts[issue_key],
+                "status": "unresolved",
+                "user_count": 0,
+            }
+
+        if normalized_query.startswith("SELECT event_count,status"):
+            issue_id, project_id = args
+            issue_key = next(
+                (
+                    key
+                    for key, value in self.issue_ids.items()
+                    if value == issue_id and key[0] == project_id
+                ),
+                None,
+            )
+            if issue_key is None:
+                return None
+
+            return {
+                "event_count": self.issue_counts[issue_key],
+                "status": "unresolved",
+            }
+
         project_id, _organization_id, event_id = args[:3]
         fingerprint = args[4]
         issue_key = (project_id, fingerprint)
-        key = (project_id, event_id)
-        if key in self.raw_ids:
+        event_key = (project_id, event_id)
+
+        if event_key in self.raw_ids:
             return {"inserted_event_id": None, "issue_id": None}
-        self.raw_ids.add(key)
+
+        self.raw_ids.add(event_key)
         self.issue_counts[issue_key] = self.issue_counts.get(issue_key, 0) + 1
-        return {"inserted_event_id": event_id, "issue_id": uuid4()}
+
+        issue_id = self.issue_ids.setdefault(issue_key, uuid4())
+
+        return {"inserted_event_id": event_id, "issue_id": issue_id}
+
+    async def fetch(self, query: str, *args: Any) -> list[dict[str, Any]]:
+        if query.lstrip().startswith("SELECT id,name,threshold,window_seconds,config"):
+            return []
+        raise AssertionError(f"Unexpected fetch query: {query}")
 
     async def execute(self, query: str, *args: Any) -> str:
         if query.lstrip().startswith("UPDATE raw_events"):

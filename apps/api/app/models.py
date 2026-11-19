@@ -349,14 +349,44 @@ class AlertHistory(Base):
             ondelete="CASCADE",
             name="fk_alert_history_rule_project",
         ),
+        ForeignKeyConstraint(
+            ["issue_id", "project_id"],
+            ["issues.id", "issues.project_id"],
+            ondelete="CASCADE",
+            name="fk_alert_history_issue_project",
+        ),
+        Index(
+            "uq_alert_history_dedupe_key",
+            "dedupe_key",
+            unique=True,
+            postgresql_where=text("dedupe_key IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'sending', 'delivered', 'failed')",
+            name="ck_alert_history_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_alert_history_attempts"),
         Index("ix_alert_history_project_created", "project_id", text("created_at DESC")),
+        Index("ix_alert_history_delivery", "status", "next_attempt_at", "triggered_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_rule_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    dedupe_key: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

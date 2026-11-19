@@ -8,6 +8,8 @@ from app.contracts.events import EventV1
 from app.fingerprints import generate_fingerprint
 from app.issues import persist_event_and_upsert_issue
 
+from workers.alerts import evaluate_rules
+
 
 async def persist_batch(
     pool: asyncpg.Pool,
@@ -59,6 +61,20 @@ async def persist_batch(
                     event.environment or "production",
                     event.model_dump_json(),
                 )
+                issue = await connection.fetchrow(
+                    "SELECT event_count,status FROM issues WHERE id=$1 AND project_id=$2",
+                    issue_id,
+                    project_id,
+                )
+                if issue is not None:
+                    await evaluate_rules(
+                        connection,
+                        project_id=project_id,
+                        issue_id=issue_id,
+                        occurred_at=event.timestamp,
+                        is_new_issue=issue["event_count"] == 1,
+                        is_regression=issue["status"] == "regressed",
+                    )
                 inserted_count += 1
 
     return inserted_count
