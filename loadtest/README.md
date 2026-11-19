@@ -6,7 +6,7 @@ This suite uses [k6](https://grafana.com/docs/k6/latest/) to apply a constant-ar
 
 - k6: achieved request rate, p50/p95/p99 HTTP latency, HTTP status counts, failed-request rate, and check success rate. The summary JSON contains the complete k6 metric distribution.
 - Redis: stream length, consumer-group `lag`, and pending entries from `XINFO GROUPS`.
-- Workers: persisted raw events/second, calculated from the change in `raw_events` row count between samples. This is aggregate persistence throughput, not per-process CPU throughput.
+- Workers: persisted raw events/second, calculated from PostgreSQL's cumulative `pg_stat_user_tables.n_tup_ins` counter for `raw_events`. This is aggregate persistence throughput, not per-process CPU throughput.
 - PostgreSQL: latency of a lightweight `SELECT 1` probe. This is a connectivity/query probe, not the latency of every persistence statement.
 
 ## Prerequisites and safety
@@ -97,7 +97,7 @@ After a real run, append the exact hardware, topology, versions, workload, raw a
 
 ## Limitations
 
-- The monitor's worker throughput is global `raw_events` table growth; concurrent traffic or cleanup can distort it. Use an isolated database and reconcile event IDs for authoritative counts.
+- The worker throughput counter is global to the PostgreSQL table; concurrent traffic or PostgreSQL statistics resets can distort the rate. Use an isolated database and reconcile event IDs for authoritative counts.
 - PostgreSQL `SELECT 1` latency does not expose per-statement insert/upsert latency, lock waits, pool saturation, WAL/checkpoint pressure, or query plans.
 - Redis `lag` may be null depending on Redis version/group state; pending is reported separately. Stream length includes entries retained in the stream, not necessarily unprocessed entries.
 - The suite measures the ingest HTTP request path, not SDK serialization/network behavior, dashboard queries, alerts, or multi-region network latency.
