@@ -198,7 +198,7 @@ async def evaluate_rules(
             """
             SELECT 1 FROM alert_history
             WHERE alert_rule_id=$1 AND issue_id=$2
-              AND triggered_at > $3 - ($4 * interval '1 second')
+              AND triggered_at > $3::timestamptz - ($4::double precision * interval '1 second')
             LIMIT 1
             """,
             rule["id"],
